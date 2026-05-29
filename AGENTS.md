@@ -10,7 +10,7 @@ AsukaFileList 是一个文件列表服务，在文件管理之上接入 Python R
 |----|------|------|
 | Java 主服务 | Spring Boot | 3.3.5 |
 | Java 运行时 | Java | 17 |
-| ORM | Spring Data JPA / MyBatis Plus | — |
+| ORM |  MyBatis Plus | — |
 | 主库 | MySQL | 8 |
 | 缓存/锁 | Redis | — |
 | AI 服务 | FastAPI + Celery | 0.111 / 5.4 |
