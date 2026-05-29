@@ -2,3 +2,4 @@ ref
 **/target/
 .claude/settings.local.json
 .github/modernize
+.env
