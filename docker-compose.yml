@@ -1,0 +1,114 @@
+version: "3.9"
+
+services:
+  # ─────────────────────────────────────────────────────────────
+  # 基础设施
+  # ─────────────────────────────────────────────────────────────
+  mysql:
+    image: mysql:8.0
+    container_name: asuka-mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD}
+      MYSQL_DATABASE: ${DB_NAME:-cloud_disk}
+      MYSQL_ROOT_HOST: "%"
+    ports:
+      - "${DB_PORT:-3306}:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-u", "root", "-p${DB_PASSWORD}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: asuka-postgres
+    environment:
+      POSTGRES_PASSWORD: ${PG_PASSWORD}
+      POSTGRES_DB: asuka_ai
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: asuka-redis
+    # 有密码时加 requirepass，无密码直接启动
+    entrypoint: >
+      sh -c '
+        if [ -n "$$REDIS_PASSWORD" ]; then
+          redis-server --requirepass "$$REDIS_PASSWORD";
+        else
+          redis-server;
+        fi
+      '
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ─────────────────────────────────────────────────────────────
+  # Java 主服务（可选，开发时直接 mvn spring-boot:run）
+  # ─────────────────────────────────────────────────────────────
+  java-service:
+    image: asuka-file-list:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: asuka-java
+    profiles: ["app"]
+    ports:
+      - "8080:8080"
+    env_file:
+      - .env
+    environment:
+      DB_HOST: mysql
+      REDIS_HOST: redis
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # ─────────────────────────────────────────────────────────────
+  # Python AI 服务（可选）
+  # ─────────────────────────────────────────────────────────────
+  ai-service:
+    image: asuka-ai-service:latest
+    build:
+      context: ./ai-service
+      dockerfile: Dockerfile
+    container_name: asuka-ai
+    profiles: ["app"]
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    environment:
+      POSTGRES_HOST: postgres
+      REDIS_URL: redis://redis:6379/0
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+volumes:
+  mysql_data:
+  postgres_data:
+  redis_data:
