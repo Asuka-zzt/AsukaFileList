@@ -1,0 +1,34 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: asuka-file-list
+
+logging:
+  level:
+    com.asuka.filelist: INFO
+    org.springframework: INFO
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+
+asuka:
+  jwt:
+    secret: ${JWT_SECRET:dev-jwt-secret-change-me}
+    token-expires-hours: ${TOKEN_EXPIRES_HOURS:48}
+  ai:
+    base-url: ${AI_SERVICE_BASE_URL:http://localhost:8000}
+    api-key: ${AI_SERVICE_KEY:dev-key}
+    internal-download-token: ${MASTER_TOKEN:dev-master-token}
+  storage:
+    list-cache-enabled: true
+    link-cache-enabled: true
+  upload:
+    max-size:
+      bytes: 10737418240
+    task-threshold:
+      bytes: 104857600

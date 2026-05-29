@@ -4,7 +4,7 @@
 
 | 层级 | 技术选择 | 说明 |
 | --- | --- | --- |
-| Java 主服务 | Spring Boot 3, Java 21 | 主业务服务，提供 REST API 和协议适配 |
+| Java 主服务 | Spring Boot 3, Java 17 | 主业务服务，提供 REST API 和协议适配；后续可平滑升级到 Java 21 |
 | ORM | Spring Data JPA 或 MyBatis Plus | 存储用户、权限、存储、分享、任务等元数据 |
 | 数据库 | MySQL 8 | 主服务业务库，和 `.env.example` 中 `cloud_disk` 保持一致 |
 | 缓存/任务 | Redis | 缓存、锁、任务状态；后续可配合 Redisson |
@@ -755,4 +755,3 @@ Python AI 服务当前配置见 `ai-service/app/core/config.py`：
 8. 实现 AI 客户端和 `/api/ai/search/*`、`/api/ai/chat` 代理。
 9. 上传成功后调用 `POST /internal/index`。
 10. 增加基础集成测试：LocalDriver、路径越权、list/get/download、AI 客户端 mock。
-
