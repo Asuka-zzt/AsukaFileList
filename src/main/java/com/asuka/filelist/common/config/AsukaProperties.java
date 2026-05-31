@@ -11,7 +11,8 @@ public record AsukaProperties(
         Jwt jwt,
         Ai ai,
         Storage storage,
-        Upload upload
+        Upload upload,
+        Bootstrap bootstrap
 ) {
 
     public record Jwt(
@@ -36,6 +37,15 @@ public record AsukaProperties(
     public record Upload(
             DataSize maxSize,
             DataSize taskThreshold
+    ) {
+    }
+
+    public record Bootstrap(
+            String adminUsername,
+            String adminPassword,
+            String guestUsername,
+            String guestPassword,
+            boolean guestEnabled
     ) {
     }
 

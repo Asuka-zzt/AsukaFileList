@@ -58,3 +58,9 @@ asuka:
       bytes: 10737418240
     task-threshold:
       bytes: 104857600
+  bootstrap:
+    admin-username: ${ASUKA_ADMIN_USERNAME:admin}
+    admin-password: ${ASUKA_ADMIN_PASSWORD:}
+    guest-username: ${ASUKA_GUEST_USERNAME:guest}
+    guest-password: ${ASUKA_GUEST_PASSWORD:}
+    guest-enabled: ${ASUKA_GUEST_ENABLED:false}
