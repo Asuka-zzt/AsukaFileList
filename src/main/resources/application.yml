@@ -5,10 +5,35 @@ spring:
   application:
     name: asuka-file-list
 
+  # ─── 数据源（MySQL） ─────────────────────────────────────────
+  datasource:
+    url: jdbc:mysql://${DB_HOST:localhost}:${DB_PORT:3306}/${DB_NAME:cloud_disk}?useUnicode=true&characterEncoding=utf8&serverTimezone=UTC&allowPublicKeyRetrieval=true&useSSL=false
+    username: ${DB_USER:root}
+    password: ${DB_PASSWORD:}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+
+  # ─── Flyway ─────────────────────────────────────────────────
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    baseline-on-migrate: true
+    validate-on-migrate: true
+
+# ─── MyBatis Plus ──────────────────────────────────────────────
+mybatis-plus:
+  mapper-locations: classpath:mapper/*.xml   # 预留 XML Mapper 目录
+  global-config:
+    db-config:
+      id-type: auto                          # 对应 AUTO_INCREMENT
+  configuration:
+    map-underscore-to-camel-case: true
+    log-impl: org.apache.ibatis.logging.nologging.NoLoggingImpl
+
 logging:
   level:
     com.asuka.filelist: INFO
     org.springframework: INFO
+    org.flywaydb: INFO
 
 management:
   endpoints:
@@ -16,6 +41,7 @@ management:
       exposure:
         include: health,info
 
+# ─── 业务配置 ──────────────────────────────────────────────────
 asuka:
   jwt:
     secret: ${JWT_SECRET:dev-jwt-secret-change-me}

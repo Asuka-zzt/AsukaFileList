@@ -4,5 +4,6 @@
   },
   "search.exclude": {
     "ref": true
-  }
+  },
+  "java.configuration.updateBuildConfiguration": "automatic"
 }
