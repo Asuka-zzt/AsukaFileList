@@ -4,5 +4,7 @@ public interface StorageDriverFactory {
 
     String name();
 
+    DriverInfo info();
+
     StorageDriver create();
 }
