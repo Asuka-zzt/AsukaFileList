@@ -5,6 +5,8 @@ import jakarta.validation.constraints.Positive;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.validation.annotation.Validated;
 
+import java.util.List;
+
 @Validated
 @ConfigurationProperties(prefix = "asuka")
 public record AsukaProperties(
@@ -30,7 +32,8 @@ public record AsukaProperties(
 
     public record Storage(
             boolean listCacheEnabled,
-            boolean linkCacheEnabled
+            boolean linkCacheEnabled,
+            List<String> localRootWhitelist
     ) {
     }
 

@@ -28,6 +28,8 @@ asuka:
   storage:
     list-cache-enabled: false
     link-cache-enabled: false
+    local-root-whitelist:
+      - /tmp
   upload:
     max-size:
       bytes: 104857600

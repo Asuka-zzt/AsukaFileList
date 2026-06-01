@@ -6,6 +6,7 @@ import com.asuka.filelist.infrastructure.security.JwtTokenProvider;
 import org.junit.jupiter.api.Test;
 
 import java.time.temporal.ChronoUnit;
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -49,7 +50,7 @@ class JwtTokenProviderTest {
         return new AsukaProperties(
                 new AsukaProperties.Jwt("unit-test-secret", 1),
                 new AsukaProperties.Ai("http://localhost:8000", "key", "token"),
-                new AsukaProperties.Storage(false, false),
+                new AsukaProperties.Storage(false, false, List.of("/tmp")),
                 new AsukaProperties.Upload(
                         AsukaProperties.DataSize.ofMegabytes(100),
                         AsukaProperties.DataSize.ofMegabytes(10)
