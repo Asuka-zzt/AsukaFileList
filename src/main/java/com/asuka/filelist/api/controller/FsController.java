@@ -4,6 +4,7 @@ import com.asuka.filelist.api.request.FsListRequest;
 import com.asuka.filelist.api.response.FsListResponse;
 import com.asuka.filelist.application.fs.FsApplicationService;
 import com.asuka.filelist.common.result.ApiResponse;
+import com.asuka.filelist.infrastructure.security.CurrentUser;
 import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -21,7 +22,7 @@ public class FsController {
     }
 
     @PostMapping("/list")
-    public ApiResponse<FsListResponse> list(@Valid @RequestBody FsListRequest request) {
-        return ApiResponse.success(fsApplicationService.list(request));
+    public ApiResponse<FsListResponse> list(CurrentUser currentUser, @Valid @RequestBody FsListRequest request) {
+        return ApiResponse.success(fsApplicationService.list(currentUser, request));
     }
 }
