@@ -151,8 +151,13 @@ public class LocalDriver implements StorageDriver, DriverGetter, DriverRootProvi
         if (rawRootPath == null || rawRootPath.isBlank()) {
             throw new BusinessException(ErrorCode.BAD_REQUEST, "Local rootPath cannot be empty");
         }
-        Path path = Path.of(rawRootPath).toAbsolutePath().normalize();
-        if (!path.isAbsolute() || !Files.exists(path) || !Files.isDirectory(path)) {
+        // 先检查是否绝对路径，防止 toAbsolutePath() 将相对路径解析为基于 cwd 的路径（review P2 fix）
+        Path raw = Path.of(rawRootPath);
+        if (!raw.isAbsolute()) {
+            throw new BusinessException(ErrorCode.BAD_REQUEST, "Local rootPath must be an absolute path");
+        }
+        Path path = raw.toAbsolutePath().normalize();
+        if (!Files.exists(path) || !Files.isDirectory(path)) {
             throw new BusinessException(ErrorCode.BAD_REQUEST, "Local rootPath must be an existing absolute directory");
         }
         return path;

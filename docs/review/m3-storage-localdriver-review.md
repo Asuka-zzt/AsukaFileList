@@ -27,7 +27,7 @@ Suggested fix:
 
 Check the resolved permission and path-limit result before calling `StorageResolver`. If the user has `PATH_LIMIT` and the requested path does not match any allowed role scope, return `PERMISSION_DENIED` or the project-standard permission error.
 
-Status: unresolved
+Status: resolved (P1: added pre-check using PermissionApplicationService.resolvePermission in FsApplicationService.list; also filter virtual mounts by perm; deny when eff perm==0)
 
 ### P2: Return paths relative to the user's base path
 
@@ -46,7 +46,7 @@ Suggested fix:
 
 Build response paths relative to the user's visible request path, or strip `basePath` before returning file and virtual entry paths.
 
-Status: unresolved
+Status: resolved (P2: introduced toVisiblePath + use visibleMount in toResponse/virtualChildren/immediateChild; paths now relative to basePath)
 
 ### P2: Reject relative Local root paths before absolutizing
 
@@ -65,7 +65,7 @@ Suggested fix:
 
 Check `Path.of(rawRootPath).isAbsolute()` before converting it to an absolute normalized path.
 
-Status: unresolved
+Status: resolved (P2 relative root: re-ordered isAbsolute check before toAbsolutePath in LocalDriver.validateRootPath; added distinct error for non-abs)
 
 ### P3: Avoid overflowing the pagination offset
 
@@ -84,4 +84,4 @@ Suggested fix:
 
 Use long arithmetic for offset calculation or cap the validated page before slicing.
 
-Status: unresolved
+Status: resolved (P3 pagination overflow fixed in FsApplicationService.responsePage using long offset)
