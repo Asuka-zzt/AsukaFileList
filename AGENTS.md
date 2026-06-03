@@ -105,3 +105,4 @@ git push -u origin <type>(<scope>)/<short-desc>
 - **不可动文件**：`pom.xml` 中已管理的依赖版本不得单独覆盖；`application.yml` 中敏感 key 通过环境变量注入（见 `.env.example`）。
 - **所有权校验**：涉及用户数据的接口必须校验 `userId` 匹配，防止越权。
 - **上传限制**：单文件最大 10 GB；超过 100 MB 走异步任务通道。
+- **commit限制**：不要一次性提交所有改动,如果一次提交涉及改动过大,按照模块划分成几个commit分批提交。
