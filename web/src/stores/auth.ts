@@ -7,13 +7,30 @@ interface AuthState {
   isAdmin: boolean;
   setAuth: (token: string, user: CurrentUser) => void;
   clearAuth: () => void;
-  initFromStorage: () => void;
+}
+
+/**
+ * 同步从 localStorage 恢复登录态，作为 store 的初始值。
+ * 放在 create 之外、首次渲染前执行，避免 ProtectedRoute 首屏因 user 为 null 而误跳登录。
+ */
+function loadInitialState(): Pick<AuthState, 'token' | 'user' | 'isAdmin'> {
+  const token = localStorage.getItem('accessToken');
+  const userStr = localStorage.getItem('currentUser');
+  if (token && userStr) {
+    try {
+      const user: CurrentUser = JSON.parse(userStr);
+      return { token, user, isAdmin: !!user.admin };
+    } catch {
+      // 数据损坏则清理，回退到未登录
+      localStorage.removeItem('accessToken');
+      localStorage.removeItem('currentUser');
+    }
+  }
+  return { token: null, user: null, isAdmin: false };
 }
 
 export const useAuthStore = create<AuthState>((set) => ({
-  token: null,
-  user: null,
-  isAdmin: false,
+  ...loadInitialState(),
 
   setAuth: (token, user) => {
     localStorage.setItem('accessToken', token);
@@ -25,18 +42,5 @@ export const useAuthStore = create<AuthState>((set) => ({
     localStorage.removeItem('accessToken');
     localStorage.removeItem('currentUser');
     set({ token: null, user: null, isAdmin: false });
-  },
-
-  initFromStorage: () => {
-    const token = localStorage.getItem('accessToken');
-    const userStr = localStorage.getItem('currentUser');
-    if (token && userStr) {
-      try {
-        const user: CurrentUser = JSON.parse(userStr);
-        set({ token, user, isAdmin: !!user.admin });
-      } catch {
-        // ignore corrupted
-      }
-    }
   },
 }));
