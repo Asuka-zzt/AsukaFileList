@@ -12,6 +12,7 @@ AsukaFileList 目标是逐步搭建一个 Java 版本的 AList，并通过 Pytho
 ├── src/main/java/              # Java 主服务
 ├── src/main/resources/         # Java 主服务配置与 Flyway 迁移脚本
 ├── src/test/java/              # Java 测试
+├── web/                        # 前端 (Vite + React + TS)
 ├── docker-compose.yml          # 本地基础设施（MySQL/PostgreSQL/Redis）
 └── pom.xml                     # Maven 工程
 ```
@@ -22,6 +23,7 @@ AsukaFileList 目标是逐步搭建一个 Java 版本的 AList，并通过 Pytho
 
 - Java 17+
 - Maven 3.8+
+- Node.js 18+ (for frontend)
 - Docker & Docker Compose
 
 ### 第一步：准备环境变量
@@ -64,6 +66,23 @@ uvicorn app.main:app --reload
 # 异步任务 worker
 celery -A app.core.celery_app worker --loglevel=info
 ```
+
+### 第五步（可选）：启动 Web 前端（AList 风格）
+
+```bash
+cd web
+npm install
+npm run dev
+```
+
+前端默认运行在 **http://localhost:5174** ，开发时代理 `/api` 到后端 8080。
+
+使用 admin 账号登录后即可：
+
+- 浏览虚拟挂载的存储（/api/fs/list）
+- 管理存储（需要 admin 权限）
+
+详细设计见 `docs/web-frontend-design.md`。
 
 ## 运行测试
 

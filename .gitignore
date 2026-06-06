@@ -3,3 +3,7 @@ ref
 .claude/settings.local.json
 .github/modernize
 .env
+
+# Web 前端构建产物与依赖
+web/node_modules/
+web/dist/
