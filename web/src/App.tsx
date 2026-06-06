@@ -1,7 +1,7 @@
 import { useEffect } from 'react'
-import { Routes, Route, Navigate, useLocation } from 'react-router-dom'
+import { Routes, Route, Navigate, useLocation, Link, useNavigate } from 'react-router-dom'
 import { useAuthStore } from './stores/auth'
-import { getCurrentUser } from './api/auth'
+import { getCurrentUser, logout } from './api/auth'
 import { toast } from 'sonner'
 
 // Pages
@@ -11,20 +11,11 @@ import AdminStorages from './pages/admin/Storages'
 
 // Simple protected route wrapper
 function ProtectedRoute({ children, requireAdmin = false }: { children: React.ReactNode; requireAdmin?: boolean }) {
-  const { user, initFromStorage } = useAuthStore()
+  // store 已在初始化时同步从 localStorage 恢复，user 在首屏即可用，无需再异步 hydrate
+  const { user } = useAuthStore()
   const location = useLocation()
 
-  useEffect(() => {
-    initFromStorage()
-  }, [initFromStorage])
-
   if (!user) {
-    // Try to hydrate from /me if token exists but store not populated yet
-    const token = localStorage.getItem('accessToken')
-    if (token) {
-      // Will be handled by layout effect in real pages; for simplicity redirect
-      return <Navigate to="/login" state={{ from: location }} replace />
-    }
     return <Navigate to="/login" state={{ from: location }} replace />
   }
 
@@ -40,15 +31,17 @@ function ProtectedRoute({ children, requireAdmin = false }: { children: React.Re
 function MainLayout({ children }: { children: React.ReactNode }) {
   const { user, clearAuth } = useAuthStore()
   const location = useLocation()
+  const navigate = useNavigate()
 
   const handleLogout = async () => {
     try {
-      await import('./api/auth').then(m => m.logout())
+      await logout()
     } catch {
-      // ignore
+      // 退出接口失败也继续清本地态
     }
     clearAuth()
-    window.location.href = '/login'
+    // SPA 内跳转，避免整页刷新
+    navigate('/login', { replace: true })
   }
 
   const isAdminPath = location.pathname.startsWith('/admin')
@@ -61,13 +54,13 @@ function MainLayout({ children }: { children: React.ReactNode }) {
           AsukaFileList
         </div>
         <div className="p-2 text-sm">
-          <a href="/" className={`block px-3 py-2 rounded hover:bg-gray-100 ${!isAdminPath ? 'bg-blue-50 text-primary font-medium' : ''}`}>
+          <Link to="/" className={`block px-3 py-2 rounded hover:bg-gray-100 ${!isAdminPath ? 'bg-blue-50 text-primary font-medium' : ''}`}>
             📁 文件浏览
-          </a>
+          </Link>
           {user?.admin && (
-            <a href="/admin/storages" className={`block px-3 py-2 rounded hover:bg-gray-100 mt-1 ${isAdminPath ? 'bg-blue-50 text-primary font-medium' : ''}`}>
+            <Link to="/admin/storages" className={`block px-3 py-2 rounded hover:bg-gray-100 mt-1 ${isAdminPath ? 'bg-blue-50 text-primary font-medium' : ''}`}>
               ⚙️ 存储管理
-            </a>
+            </Link>
           )}
         </div>
         <div className="mt-auto p-3 text-xs text-gray-500 border-t">
@@ -86,7 +79,7 @@ function MainLayout({ children }: { children: React.ReactNode }) {
           </div>
           <div className="flex items-center gap-3 text-sm">
             {user?.admin && !isAdminPath && (
-              <a href="/admin/storages" className="text-primary hover:underline">进入管理</a>
+              <Link to="/admin/storages" className="text-primary hover:underline">进入管理</Link>
             )}
             <button onClick={handleLogout} className="text-gray-500 hover:text-red-600">
               退出登录
@@ -106,24 +99,17 @@ function MainLayout({ children }: { children: React.ReactNode }) {
 }
 
 function App() {
-  const { initFromStorage, user } = useAuthStore()
+  const { token, setAuth, clearAuth } = useAuthStore()
 
+  // 启动时若已有 token，向 /api/me 校验并刷新用户信息；token 失效则清除登录态。
+  // 仅在挂载时执行一次。
   useEffect(() => {
-    initFromStorage()
-    // Optional: if token but no user in store, try fetch /me
-    const token = localStorage.getItem('accessToken')
-    if (token && !user) {
-      getCurrentUser()
-        .then((u) => {
-          // store will be set by login flow normally; here just for hydration
-          useAuthStore.getState().setAuth(token, u)
-        })
-        .catch(() => {
-          // invalid token
-          localStorage.removeItem('accessToken')
-        })
-    }
-  }, [initFromStorage, user])
+    if (!token) return
+    getCurrentUser()
+      .then((u) => setAuth(token, u))
+      .catch(() => clearAuth())
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   return (
     <Routes>
