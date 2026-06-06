@@ -79,6 +79,13 @@
             <optional>true</optional>
         </dependency>
 
+        <!-- 本地开发自动加载 .env（启动时注入为 PropertySource，生产环境用真实环境变量时 .env 缺失不影响） -->
+        <dependency>
+            <groupId>me.paulschwarz</groupId>
+            <artifactId>spring-dotenv</artifactId>
+            <version>4.0.0</version>
+        </dependency>
+
         <!-- 测试 -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
