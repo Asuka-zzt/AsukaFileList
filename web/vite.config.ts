@@ -12,6 +12,12 @@ export default defineConfig({
         target: 'http://localhost:8080',
         changeOrigin: true,
       },
+      // Proxy file download endpoint (/d/**) so the browser fetches real bytes,
+      // not the SPA index.html fallback.
+      '/d': {
+        target: 'http://localhost:8080',
+        changeOrigin: true,
+      },
     },
   },
 })
