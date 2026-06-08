@@ -32,6 +32,7 @@ import com.asuka.filelist.infrastructure.driver.LinkArgs;
 import com.asuka.filelist.infrastructure.driver.ListArgs;
 import com.asuka.filelist.infrastructure.driver.UploadFile;
 import com.asuka.filelist.infrastructure.security.CurrentUser;
+import com.asuka.filelist.infrastructure.security.DownloadSignService;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
@@ -53,14 +54,17 @@ public class FsApplicationService {
     private final MountedStorageRegistry mountedStorageRegistry;
     private final PermissionApplicationService permissionApplicationService;
     private final MetaApplicationService metaApplicationService;
+    private final DownloadSignService downloadSignService;
 
     public FsApplicationService(StorageResolver storageResolver, MountedStorageRegistry mountedStorageRegistry,
                                 PermissionApplicationService permissionApplicationService,
-                                MetaApplicationService metaApplicationService) {
+                                MetaApplicationService metaApplicationService,
+                                DownloadSignService downloadSignService) {
         this.storageResolver = storageResolver;
         this.mountedStorageRegistry = mountedStorageRegistry;
         this.permissionApplicationService = permissionApplicationService;
         this.metaApplicationService = metaApplicationService;
+        this.downloadSignService = downloadSignService;
     }
 
     /**
@@ -403,8 +407,10 @@ public class FsApplicationService {
     private FileObjectResponse toResponse(Storage storage, FileObject object, String basePath) {
         String visibleMount = toVisiblePath(storage.mountPath(), basePath);
         String path = toRequestPath(visibleMount, object.path());
+        // M5: 文件条目附带下载签名（绑定用户可见路径），目录不签名
+        String sign = object.directory() ? "" : downloadSignService.sign(path);
         return new FileObjectResponse(object.id(), path, object.name(), object.size(), object.directory(),
-                object.modifiedAt(), object.createdAt(), "", "", object.directory() ? 1 : 0,
+                object.modifiedAt(), object.createdAt(), sign, "", object.directory() ? 1 : 0,
                 object.hashInfo(), storage.driver());
     }
 
