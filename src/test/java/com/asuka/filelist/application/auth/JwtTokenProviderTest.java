@@ -55,7 +55,8 @@ class JwtTokenProviderTest {
                         AsukaProperties.DataSize.ofMegabytes(100),
                         AsukaProperties.DataSize.ofMegabytes(10)
                 ),
-                new AsukaProperties.Bootstrap("admin", "password", "guest", "", false)
+                new AsukaProperties.Bootstrap("admin", "password", "guest", "", false),
+                new AsukaProperties.Download(14400, false)
         );
     }
 }

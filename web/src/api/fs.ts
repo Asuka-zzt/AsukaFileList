@@ -95,10 +95,11 @@ export async function uploadFile(dirPath: string, file: File): Promise<FileObjec
   return data.data;
 }
 
-// 带鉴权下载并触发浏览器保存（M4 暂用 Bearer 头，签名 URL 见 M5）
-export async function downloadFile(path: string, name: string): Promise<void> {
+// 带鉴权下载并触发浏览器保存；M5 起携带下载签名（密码目录下文件必需）
+export async function downloadFile(path: string, name: string, sign?: string): Promise<void> {
   const token = localStorage.getItem('accessToken');
-  const res = await fetch('/d' + encodePath(path), {
+  const query = sign ? '?sign=' + encodeURIComponent(sign) : '';
+  const res = await fetch('/d' + encodePath(path) + query, {
     headers: token ? { Authorization: `Bearer ${token}` } : {},
   });
   if (!res.ok) throw new Error('下载失败');

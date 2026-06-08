@@ -24,9 +24,11 @@ AsukaFileList 需要从当前 Java Spring Boot 脚手架逐步演进为完整的
 | M1 数据库迁移 | ✅ 已完成 | `V1__init_schema.sql` 八张表 + 实体/Repository |
 | M2 认证/用户/角色 | ✅ 已完成 | Auth/Me/AdminUser/AdminRole + Token/Password 服务 |
 | M3 存储挂载/LocalDriver | ✅ 已完成 | AdminStorage/AdminDriver + LocalDriver（只读：list/get/link）|
-| M4 文件读写闭环 | 🔴 进行中（当前前沿）| `FsApplicationService` 仅实现 `list`；缺写驱动、下载、增删改 |
+| M4 文件读写闭环 | ✅ 已完成 | DriverWriter + 下载链路 + get/dirs/增删改/上传 + 前端文件管理 |
+| M5 Meta/隐藏/下载签名 | ✅ 已完成 | AdminMeta + 目录密码/隐藏/README/Header + HMAC 下载签名 + 前端密码框/README |
+| M6 任务中心/文件名索引 | 🔴 进行中（当前前沿）| 待开发 |
 
-> README 的"开发阶段"表已过时（停在 M2 计划中），将随 M4 一并更新。
+> README 的"开发阶段"表已随 M5 更新至 M0–M5 ✅、M6 计划中。
 
 ### 两条修订原则
 
@@ -717,7 +719,7 @@ docker compose up -d mysql postgres redis
 
 ## 下一步建议
 
-M0–M3 已完成（见上方"进度对账"）。**下一阶段为 M4 文件读写闭环**：补齐 `DriverWriter` 写驱动、`/d/**` 下载链路、`FsApplicationService` 的 get/dirs/增删改/上传，并在 `web/` 同步文件管理 UI。
+M0–M5 已完成（见上方"进度对账"）。**下一阶段为 M6 任务中心与文件名索引**：实现长耗时任务（上传/复制/索引重建）、`file_index_nodes` 文件名索引与 `/api/fs/search`，并在 `web/` 同步任务进度面板与搜索页。
 
-M4 详细设计见 `docs/2026-06-07-m4-readwrite.md`，按"先设计、批准后编码"的工作流推进。AI 集成（原 M7）按本次修订延后至最后一个里程碑 M9。
+M4 设计见 `docs/2026-06-07-m4-readwrite.md`，M5 设计见 `docs/2026-06-08-m5-meta-sign.md`，均按"先设计、批准后编码"的工作流推进。AI 集成（原 M7）按本次修订延后至最后一个里程碑 M9。
 

@@ -14,7 +14,8 @@ public record AsukaProperties(
         Ai ai,
         Storage storage,
         Upload upload,
-        Bootstrap bootstrap
+        Bootstrap bootstrap,
+        Download download
 ) {
 
     public record Jwt(
@@ -49,6 +50,14 @@ public record AsukaProperties(
             String guestUsername,
             String guestPassword,
             boolean guestEnabled
+    ) {
+    }
+
+    public record Download(
+            // 下载签名有效期秒数，0 表示永不过期
+            long signTtlSeconds,
+            // 是否对所有文件强制签名（默认 false，仅密码目录需签名）
+            boolean signAll
     ) {
     }
 

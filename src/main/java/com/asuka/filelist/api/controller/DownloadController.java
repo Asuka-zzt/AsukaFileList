@@ -2,9 +2,14 @@ package com.asuka.filelist.api.controller;
 
 import com.asuka.filelist.application.fs.FsApplicationService;
 import com.asuka.filelist.application.fs.FsDownloadTarget;
+import com.asuka.filelist.application.meta.MetaApplicationService;
+import com.asuka.filelist.common.exception.BusinessException;
+import com.asuka.filelist.common.exception.ErrorCode;
+import com.asuka.filelist.common.path.PathUtils;
 import com.asuka.filelist.common.util.FileTypeUtils;
 import com.asuka.filelist.infrastructure.driver.LinkArgs;
 import com.asuka.filelist.infrastructure.security.CurrentUser;
+import com.asuka.filelist.infrastructure.security.DownloadSignService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -33,9 +38,15 @@ public class DownloadController {
     private static final int BUFFER_SIZE = 8192;
 
     private final FsApplicationService fsApplicationService;
+    private final MetaApplicationService metaApplicationService;
+    private final DownloadSignService downloadSignService;
 
-    public DownloadController(FsApplicationService fsApplicationService) {
+    public DownloadController(FsApplicationService fsApplicationService,
+                              MetaApplicationService metaApplicationService,
+                              DownloadSignService downloadSignService) {
         this.fsApplicationService = fsApplicationService;
+        this.metaApplicationService = metaApplicationService;
+        this.downloadSignService = downloadSignService;
     }
 
     /**
@@ -44,6 +55,7 @@ public class DownloadController {
     @GetMapping("/d/**")
     public void download(CurrentUser currentUser, HttpServletRequest request, HttpServletResponse response) throws IOException {
         String path = extractPath(request);
+        enforceSign(currentUser, path, request.getParameter("sign"));
         LinkArgs args = new LinkArgs(request.getRemoteAddr(), Map.of(), "", false);
         FsDownloadTarget target = fsApplicationService.link(currentUser, path, args);
 
@@ -54,6 +66,23 @@ public class DownloadController {
             return;
         }
         serveLocalFile(Paths.get(url), target.file().name(), request, response);
+    }
+
+    /**
+     * M5: 需签名时校验 ?sign=。需签名条件 = 全局 signAll 或该路径命中带密码的 Meta；admin 豁免。
+     * 签名绑定规范化后的用户可见路径，与 list/get 下发的 sign 一致。
+     */
+    private void enforceSign(CurrentUser currentUser, String visiblePath, String sign) {
+        if (currentUser.admin()) {
+            return;
+        }
+        String normalized = PathUtils.fixAndCleanPath(visiblePath);
+        String internalPath = PathUtils.joinBasePath(currentUser.basePath(), normalized);
+        boolean needsSign = downloadSignService.signAll()
+                || metaApplicationService.resolve(internalPath).hasPassword();
+        if (needsSign && !downloadSignService.verify(normalized, sign)) {
+            throw new BusinessException(ErrorCode.PERMISSION_DENIED, "Valid download sign is required");
+        }
     }
 
     /**

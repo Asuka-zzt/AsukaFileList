@@ -9,7 +9,7 @@ spring:
   datasource:
     url: jdbc:mysql://${DB_HOST:localhost}:${DB_PORT:3306}/${DB_NAME:cloud_disk}?useUnicode=true&characterEncoding=utf8&serverTimezone=UTC&allowPublicKeyRetrieval=true&useSSL=false
     username: ${DB_USER:root}
-    password: ${DB_PASSWORD:}
+    password: ${DB_PASSWORD:root}
     driver-class-name: com.mysql.cj.jdbc.Driver
 
   # ─── Flyway ─────────────────────────────────────────────────
@@ -60,6 +60,11 @@ asuka:
       bytes: 10737418240
     task-threshold:
       bytes: 104857600
+  download:
+    # 下载签名有效期秒数，0 表示永不过期；默认 4 小时
+    sign-ttl-seconds: ${DOWNLOAD_SIGN_TTL:14400}
+    # 是否对所有文件强制签名；默认仅密码目录需要签名
+    sign-all: ${DOWNLOAD_SIGN_ALL:false}
   bootstrap:
     admin-username: ${ASUKA_ADMIN_USERNAME:admin}
     admin-password: ${ASUKA_ADMIN_PASSWORD:}

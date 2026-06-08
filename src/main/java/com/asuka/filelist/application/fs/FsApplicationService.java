@@ -13,6 +13,7 @@ import com.asuka.filelist.api.response.FsListResponse;
 import com.asuka.filelist.application.storage.MountedStorageRegistry;
 import com.asuka.filelist.application.storage.MountedStorageRuntime;
 import com.asuka.filelist.application.storage.ResolvedStoragePath;
+import com.asuka.filelist.application.meta.MetaApplicationService;
 import com.asuka.filelist.application.storage.StorageResolver;
 import com.asuka.filelist.application.user.PermissionApplicationService;
 import com.asuka.filelist.common.exception.BusinessException;
@@ -21,6 +22,7 @@ import com.asuka.filelist.common.path.PathUtils;
 import com.asuka.filelist.domain.fs.BasicFileObject;
 import com.asuka.filelist.domain.fs.FileLink;
 import com.asuka.filelist.domain.fs.FileObject;
+import com.asuka.filelist.domain.meta.ResolvedMeta;
 import com.asuka.filelist.domain.storage.Storage;
 import com.asuka.filelist.domain.user.PermissionBits;
 import com.asuka.filelist.infrastructure.driver.DriverContext;
@@ -30,6 +32,7 @@ import com.asuka.filelist.infrastructure.driver.LinkArgs;
 import com.asuka.filelist.infrastructure.driver.ListArgs;
 import com.asuka.filelist.infrastructure.driver.UploadFile;
 import com.asuka.filelist.infrastructure.security.CurrentUser;
+import com.asuka.filelist.infrastructure.security.DownloadSignService;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
@@ -39,6 +42,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.regex.Pattern;
 
 /**
  * 文件系统应用服务。M3 接入存储挂载与只读列表，M4 补全 get/dirs 与增删改/上传/下载读写闭环。
@@ -49,12 +53,18 @@ public class FsApplicationService {
     private final StorageResolver storageResolver;
     private final MountedStorageRegistry mountedStorageRegistry;
     private final PermissionApplicationService permissionApplicationService;
+    private final MetaApplicationService metaApplicationService;
+    private final DownloadSignService downloadSignService;
 
     public FsApplicationService(StorageResolver storageResolver, MountedStorageRegistry mountedStorageRegistry,
-                                PermissionApplicationService permissionApplicationService) {
+                                PermissionApplicationService permissionApplicationService,
+                                MetaApplicationService metaApplicationService,
+                                DownloadSignService downloadSignService) {
         this.storageResolver = storageResolver;
         this.mountedStorageRegistry = mountedStorageRegistry;
         this.permissionApplicationService = permissionApplicationService;
+        this.metaApplicationService = metaApplicationService;
+        this.downloadSignService = downloadSignService;
     }
 
     /**
@@ -73,11 +83,48 @@ public class FsApplicationService {
             throw new BusinessException(ErrorCode.PERMISSION_DENIED, "Permission denied");
         }
 
+        // M5: 解析就近 Meta，做目录密码校验，并计算隐藏可见性与写开关
+        ResolvedMeta meta = metaApplicationService.resolve(normalizedPath);
+        requirePassword(currentUser, visiblePath, meta, request.password());
+        boolean canViewHidden = permissionApplicationService.hasPermission(currentUser, visiblePath, PermissionBits.VIEW_HIDDEN);
+        boolean write = permissionApplicationService.hasPermission(currentUser, visiblePath, PermissionBits.WRITE_UPLOAD)
+                || meta.writeEnabled();
+
         Optional<ResolvedStoragePath> resolved = storageResolver.tryResolve(normalizedPath);
         if (resolved.isPresent()) {
-            return listResolvedPath(resolved.get(), page, perPage, request.refresh(), currentUser);
+            return listResolvedPath(resolved.get(), page, perPage, request.refresh(), currentUser, meta, canViewHidden, write);
         }
-        return listVirtualPath(visiblePath, page, perPage, currentUser);
+        return listVirtualPath(visiblePath, page, perPage, currentUser, meta, canViewHidden, write);
+    }
+
+    /**
+     * M5: 目录密码校验。无 BYPASS_PASSWORD 权限时，必须提供与 Meta 一致的密码。
+     */
+    private void requirePassword(CurrentUser currentUser, String visiblePath, ResolvedMeta meta, String provided) {
+        if (!meta.hasPassword()
+                || permissionApplicationService.hasPermission(currentUser, visiblePath, PermissionBits.BYPASS_PASSWORD)) {
+            return;
+        }
+        if (provided == null || provided.isEmpty()) {
+            throw new BusinessException(ErrorCode.PASSWORD_REQUIRED, "Directory password is required");
+        }
+        if (!meta.password().equals(provided)) {
+            throw new BusinessException(ErrorCode.PASSWORD_INCORRECT, "Directory password is incorrect");
+        }
+    }
+
+    /**
+     * M5: 隐藏过滤。无 VIEW_HIDDEN 权限时，剔除命中 hide 正则的条目。
+     */
+    private List<FileObjectResponse> applyHide(List<FileObjectResponse> objects, ResolvedMeta meta, boolean canViewHidden) {
+        List<String> regexes = meta.hideRegexes();
+        if (canViewHidden || regexes.isEmpty()) {
+            return objects;
+        }
+        List<Pattern> patterns = regexes.stream().map(Pattern::compile).toList();
+        return objects.stream()
+                .filter(obj -> patterns.stream().noneMatch(pattern -> pattern.matcher(obj.name()).find()))
+                .toList();
     }
 
     /**
@@ -267,7 +314,8 @@ public class FsApplicationService {
     /**
      * 列出真实存储路径。
      */
-    private FsListResponse listResolvedPath(ResolvedStoragePath resolved, int page, int perPage, boolean refresh, CurrentUser currentUser) {
+    private FsListResponse listResolvedPath(ResolvedStoragePath resolved, int page, int perPage, boolean refresh,
+                                            CurrentUser currentUser, ResolvedMeta meta, boolean canViewHidden, boolean write) {
         MountedStorageRuntime runtime = resolved.runtime();
         FileObject dir = getObject(runtime, resolved.actualPath());
         List<FileObjectResponse> objects = runtime.driver()
@@ -276,18 +324,21 @@ public class FsApplicationService {
                 .sorted(fileComparator(runtime.storage()))
                 .map(object -> toResponse(runtime.storage(), object, currentUser.basePath()))
                 .toList();
-        return responsePage(objects, page, perPage, runtime.storage().driver());
+        objects = applyHide(objects, meta, canViewHidden);
+        return responsePage(objects, page, perPage, runtime.storage().driver(), meta, write);
     }
 
     /**
      * 列出虚拟挂载路径。
      */
-    private FsListResponse listVirtualPath(String visiblePath, int page, int perPage, CurrentUser currentUser) {
+    private FsListResponse listVirtualPath(String visiblePath, int page, int perPage, CurrentUser currentUser,
+                                           ResolvedMeta meta, boolean canViewHidden, boolean write) {
         List<FileObjectResponse> entries = virtualChildren(visiblePath, currentUser.basePath(), currentUser);
         if (entries.isEmpty() && !PathUtils.pathEquals(visiblePath, "/")) {
             throw new BusinessException(ErrorCode.STORAGE_NOT_FOUND, "Storage not found");
         }
-        return responsePage(entries, page, perPage, "virtual");
+        entries = applyHide(entries, meta, canViewHidden);
+        return responsePage(entries, page, perPage, "virtual", meta, write);
     }
 
     /**
@@ -356,8 +407,10 @@ public class FsApplicationService {
     private FileObjectResponse toResponse(Storage storage, FileObject object, String basePath) {
         String visibleMount = toVisiblePath(storage.mountPath(), basePath);
         String path = toRequestPath(visibleMount, object.path());
+        // M5: 文件条目附带下载签名（绑定用户可见路径），目录不签名
+        String sign = object.directory() ? "" : downloadSignService.sign(path);
         return new FileObjectResponse(object.id(), path, object.name(), object.size(), object.directory(),
-                object.modifiedAt(), object.createdAt(), "", "", object.directory() ? 1 : 0,
+                object.modifiedAt(), object.createdAt(), sign, "", object.directory() ? 1 : 0,
                 object.hashInfo(), storage.driver());
     }
 
@@ -397,9 +450,10 @@ public class FsApplicationService {
     /**
      * 响应分页。
      */
-    private FsListResponse responsePage(List<FileObjectResponse> all, int page, int perPage, String provider) {
+    private FsListResponse responsePage(List<FileObjectResponse> all, int page, int perPage, String provider,
+                                        ResolvedMeta meta, boolean write) {
         if (perPage == -1) {
-            return new FsListResponse(all, all.size(), page, perPage, false, "", "", false, provider);
+            return new FsListResponse(all, all.size(), page, perPage, false, meta.readme(), meta.header(), write, provider);
         }
         // P3 fix (review): 使用 long 避免大 page * perPage 导致 int 溢出（负数），导致 subList 异常
         long offset = (page - 1L) * perPage;
@@ -409,7 +463,8 @@ public class FsApplicationService {
         }
         int to = Math.min(from + perPage, all.size());
         boolean hasMore = to < all.size();
-        return new FsListResponse(all.subList(from, to), all.size(), page, perPage, hasMore, "", "", false, provider);
+        return new FsListResponse(all.subList(from, to), all.size(), page, perPage, hasMore,
+                meta.readme(), meta.header(), write, provider);
     }
 
     /**

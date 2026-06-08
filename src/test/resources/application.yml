@@ -35,6 +35,9 @@ asuka:
       bytes: 104857600
     task-threshold:
       bytes: 10485760
+  download:
+    sign-ttl-seconds: 14400
+    sign-all: false
   bootstrap:
     admin-username: admin
     admin-password: test-admin-password
