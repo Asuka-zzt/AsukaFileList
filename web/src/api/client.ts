@@ -36,8 +36,18 @@ api.interceptors.response.use(
       }
     }
     const msg = error.response?.data?.message || error.message || 'Request failed';
-    return Promise.reject(new Error(msg));
+    // 透传后端错误码与 HTTP 状态，便于上层区分（如目录密码 PASSWORD_REQUIRED/INCORRECT）
+    const apiError = new Error(msg) as Error & { code?: string; status?: number };
+    apiError.code = error.response?.data?.code;
+    apiError.status = error.response?.status;
+    return Promise.reject(apiError);
   }
 );
+
+// 带后端错误码的错误类型
+export interface ApiError extends Error {
+  code?: string;
+  status?: number;
+}
 
 export default api;

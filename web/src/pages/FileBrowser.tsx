@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import type { FileObject } from '../api/fs'
+import type { ApiError } from '../api/client'
 import {
   listFiles,
   makeDir,
@@ -9,19 +10,32 @@ import {
   downloadFile,
   renameFile,
 } from '../api/fs'
-import { Folder, File, RefreshCw, Upload, FolderPlus, Download, Trash2, Pencil } from 'lucide-react'
+import { Folder, File, RefreshCw, Upload, FolderPlus, Download, Trash2, Pencil, Lock } from 'lucide-react'
 
 export default function FileBrowser() {
   const [currentPath, setCurrentPath] = useState('/')
   const [refreshKey, setRefreshKey] = useState(0)
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
+  // M5: 记忆各目录已输入的密码，导航期间复用
+  const [passwords, setPasswords] = useState<Record<string, string>>({})
+  const [passwordInput, setPasswordInput] = useState('')
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  const { data, isLoading, isError, refetch } = useQuery({
-    queryKey: ['fs-list', currentPath, refreshKey],
-    queryFn: () => listFiles({ path: currentPath, perPage: -1 }),
+  const { data, isLoading, isError, error, refetch } = useQuery({
+    queryKey: ['fs-list', currentPath, refreshKey, passwords[currentPath] || ''],
+    queryFn: () => listFiles({ path: currentPath, password: passwords[currentPath], perPage: -1 }),
+    retry: false,
   })
+
+  // M5: 目录密码错误识别（透传自后端 code）
+  const apiError = error as ApiError | null
+  const needPassword = apiError?.code === 'PASSWORD_REQUIRED' || apiError?.code === 'PASSWORD_INCORRECT'
+
+  const submitPassword = () => {
+    setPasswords((prev) => ({ ...prev, [currentPath]: passwordInput }))
+    setPasswordInput('')
+  }
 
   const reload = () => {
     setRefreshKey((k) => k + 1)
@@ -73,7 +87,7 @@ export default function FileBrowser() {
     e.target.value = ''
   }
 
-  const handleDownload = (item: FileObject) => run('下载', () => downloadFile(item.path, item.name))
+  const handleDownload = (item: FileObject) => run('下载', () => downloadFile(item.path, item.name, item.sign))
 
   const handleRename = (item: FileObject) => {
     const name = window.prompt('重命名为', item.name)
@@ -132,10 +146,38 @@ export default function FileBrowser() {
 
       {message && <div className="mb-3 text-sm text-red-600 bg-red-50 border border-red-200 rounded px-3 py-2">{message}</div>}
 
+      {/* M5: 目录 Header */}
+      {data?.header && (
+        <div className="mb-3 text-sm bg-blue-50 border border-blue-200 rounded px-3 py-2 whitespace-pre-wrap">{data.header}</div>
+      )}
+
+      {/* M5: 目录密码输入 */}
+      {needPassword && (
+        <div className="mb-3 bg-white border rounded-lg p-6 flex flex-col items-center gap-3">
+          <Lock className="w-6 h-6 text-amber-500" />
+          <div className="text-sm text-gray-600">此目录需要访问密码</div>
+          {apiError?.code === 'PASSWORD_INCORRECT' && <div className="text-xs text-red-500">密码错误，请重试</div>}
+          <div className="flex items-center gap-2">
+            <input
+              type="password"
+              value={passwordInput}
+              autoFocus
+              onChange={(e) => setPasswordInput(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && submitPassword()}
+              className="text-sm px-3 py-1.5 border rounded"
+              placeholder="输入目录密码"
+            />
+            <button onClick={submitPassword} className="text-sm px-3 py-1.5 border rounded bg-primary text-white hover:opacity-90">
+              确定
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* File list */}
       <div className="bg-white rounded-lg border overflow-hidden">
         {isLoading && <div className="p-8 text-center text-gray-500">加载中...</div>}
-        {isError && <div className="p-8 text-center text-red-500">加载失败，请检查后端服务或权限</div>}
+        {isError && !needPassword && <div className="p-8 text-center text-red-500">加载失败，请检查后端服务或权限</div>}
 
         {!isLoading && !isError && (
           <table className="file-table w-full text-sm">
@@ -193,8 +235,13 @@ export default function FileBrowser() {
         )}
       </div>
 
+      {/* M5: 目录 README */}
+      {data?.readme && (
+        <div className="mt-4 text-sm bg-white border rounded-lg p-4 whitespace-pre-wrap text-gray-700">{data.readme}</div>
+      )}
+
       <div className="mt-3 text-xs text-gray-400">
-        提示：点击文件夹或虚拟挂载点进入。进入具体存储后可上传、下载、新建文件夹、重命名与删除（M4）。
+        提示：点击文件夹或虚拟挂载点进入。进入具体存储后可上传、下载、新建文件夹、重命名与删除（M4）；目录密码、隐藏项与 README 由 M5 提供。
       </div>
     </div>
   )
