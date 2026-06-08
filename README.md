@@ -25,12 +25,24 @@ AsukaFileList 目标是逐步搭建一个 Java 版本的 AList，并通过 Pytho
 - Maven 3.8+
 - Node.js 18+ (for frontend)
 - Docker & Docker Compose
+- tmux (可选，用于持久化启动后端/前端，防止在 AI 环境中因超时被终止)
 
-### 第一步：准备环境变量
+### 第一步：准备环境变量（重要）
 
 ```bash
 cp .env.example .env
-# 编辑 .env，填入 DB_PASSWORD 等真实值
+# 编辑 .env
+# - 至少设置 DB_PASSWORD、PG_PASSWORD 等
+# - **必须设置 ASUKA_ADMIN_PASSWORD**（后端启动时会校验，否则会报错 "ASUKA_ADMIN_PASSWORD must be configured"）
+#   开发时可设为 admin123
+```
+
+示例关键项：
+
+```env
+ASUKA_ADMIN_USERNAME=admin
+ASUKA_ADMIN_PASSWORD=admin123   # 开发测试用，生产请用强密码
+ASUKA_LOCAL_ROOT_WHITELIST=/tmp/asuka-file-list
 ```
 
 ### 第二步：启动基础设施
@@ -43,17 +55,48 @@ docker compose up -d mysql postgres redis
 docker compose ps
 ```
 
-### 第三步：启动 Java 主服务
+### 第三步：启动 Java 主服务（后端）
+
+**方式一：直接本地运行（需先加载 .env）**
 
 ```bash
+# 加载 .env 环境变量（健壮方式，自动忽略注释和空行）
+export $(grep -v '^#' .env | grep -v '^$' | sed 's/ *#.*//' | xargs)
+
 mvn spring-boot:run
 ```
 
-服务启动后 Flyway 会自动建表。访问：
+**方式二：使用 tmux 持久化运行（推荐在当前 AI/工具环境中，防止超时被杀）**
+
+```bash
+tmux new-session -d -s asuka-backend -c . '
+set -a
+while IFS="=" read -r k v || [ -n "$k" ]; do
+  k=$(echo "$k" | sed "s/^[[:space:]]*//;s/[[:space:]]*$//")
+  [[ $k =~ ^# ]] || [[ -z $k ]] && continue
+  v=$(echo "$v" | sed "s/[[:space:]]*#.*//; s/[[:space:]]*$//")
+  export "$k=$v"
+done < .env
+set +a
+echo "=== Env loaded. Starting backend ==="
+mvn spring-boot:run -B -DskipTests -Dmaven.javadoc.skip=true --no-transfer-progress
+'
+
+# 查看日志
+tmux capture-pane -t asuka-backend -p | tail -100
+# 实时附加：tmux attach -t asuka-backend （Ctrl-b d 退出）
+```
+
+服务启动后 Flyway 会自动建表。访问验证：
 
 ```bash
 curl http://localhost:8080/api/health
 curl http://localhost:8080/actuator/health
+
+# 测试 admin 登录（密码来自 .env 的 ASUKA_ADMIN_PASSWORD）
+curl -X POST http://localhost:8080/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"username":"admin","password":"admin123"}'
 ```
 
 ### 第四步（可选）：启动 Python AI 服务
@@ -69,20 +112,54 @@ celery -A app.core.celery_app worker --loglevel=info
 
 ### 第五步（可选）：启动 Web 前端（AList 风格）
 
+**方式一：直接本地运行**
+
 ```bash
 cd web
 npm install
 npm run dev
 ```
 
+**方式二：使用 tmux 持久化运行（推荐）**
+
+```bash
+tmux new-session -d -s asuka-frontend -c web 'npm run dev'
+
+# 查看日志
+tmux capture-pane -t asuka-frontend -p | tail -100
+# 实时附加：tmux attach -t asuka-frontend （Ctrl-b d 退出）
+```
+
 前端默认运行在 **http://localhost:5174** ，开发时代理 `/api` 到后端 8080。
 
-使用 admin 账号登录后即可：
+使用 admin 账号登录（密码 = 你在 .env 设置的 `ASUKA_ADMIN_PASSWORD`）后即可：
 
 - 浏览虚拟挂载的存储（/api/fs/list）
 - 管理存储（需要 admin 权限）
 
 详细设计见 `docs/web-frontend-design.md`。
+
+### 使用 Docker 完整启动（生产模拟）
+
+```bash
+# 构建并启动 infra + java-service + ai-service
+docker compose --profile app up -d --build
+
+# 查看日志
+docker compose logs -f java-service
+docker compose logs -f ai-service
+```
+
+访问同上：后端 8080，前端需单独构建或用 volume 挂载（开发仍推荐本地 npm run dev）。
+
+### 停止服务（tmux 方式）
+
+```bash
+tmux kill-session -t asuka-frontend
+tmux kill-session -t asuka-backend
+# 或全部
+tmux kill-server
+```
 
 ## 运行测试
 
@@ -100,7 +177,14 @@ mvn compile -q
 |------|------|
 | `GET  /api/health` | 健康检查 |
 | `GET  /actuator/health` | Spring Actuator 健康 |
-| `POST /api/fs/list` | 文件列表（当前返回占位数据） |
+| `POST /api/auth/login` | 登录获取 JWT |
+| `POST /api/fs/list` | 文件列表（支持目录密码、隐藏过滤、README/Header） |
+| `POST /api/fs/get` `dirs` `mkdir` `rename` `move` `copy` `remove` | 文件读写操作 |
+| `PUT  /api/fs/put` | 流式上传 |
+| `GET  /d/**?sign=` | 文件下载（Range；密码目录需签名） |
+| `GET/POST /api/admin/meta/*` | 目录 Meta 规则管理（list/get/create/update/delete） |
+| `GET/POST /api/admin/storage/*` `driver/*` | 存储与驱动管理 |
+| `GET/POST /api/admin/user/*` `role/*` | 用户与角色管理 |
 
 ## 文档
 
@@ -117,6 +201,8 @@ mvn compile -q
 |------|------|------|
 | M0 | ✅ | 工程治理、docker-compose、本地基线 |
 | M1 | ✅ | 数据库迁移体系（Flyway + JPA 实体） |
-| M2 | 计划中 | 认证、JWT、用户角色 |
-| M3 | 计划中 | 存储挂载与 LocalDriver |
-| M4 | 计划中 | 文件系统读写闭环 |
+| M2 | ✅ | 认证、JWT、用户角色 |
+| M3 | ✅ | 存储挂载与 LocalDriver |
+| M4 | ✅ | 文件系统读写闭环 |
+| M5 | ✅ | 目录 Meta、隐藏规则、README/Header、下载签名 |
+| M6 | 计划中 | 任务中心与文件名索引 |
