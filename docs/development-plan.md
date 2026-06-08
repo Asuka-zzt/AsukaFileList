@@ -12,6 +12,40 @@ AsukaFileList 需要从当前 Java Spring Boot 脚手架逐步演进为完整的
 
 本文件用于约束后续完整开发流程：每个阶段先补设计，再实现，再测试，再进入下一阶段。
 
+## 路线修订（2026-06-07）
+
+> 本节为最新执行约定。下方 M0–M9 章节已按本次修订重排（AI 集成下沉为最后的 M9，原独立前端 M10 已拆解进各里程碑的"前端切片"）。
+
+### 进度对账（与实际代码核对）
+
+| 里程碑 | 实际状态 | 说明 |
+| --- | --- | --- |
+| M0 工程治理 | ✅ 已完成 | docker-compose、.env、文档齐全 |
+| M1 数据库迁移 | ✅ 已完成 | `V1__init_schema.sql` 八张表 + 实体/Repository |
+| M2 认证/用户/角色 | ✅ 已完成 | Auth/Me/AdminUser/AdminRole + Token/Password 服务 |
+| M3 存储挂载/LocalDriver | ✅ 已完成 | AdminStorage/AdminDriver + LocalDriver（只读：list/get/link）|
+| M4 文件读写闭环 | 🔴 进行中（当前前沿）| `FsApplicationService` 仅实现 `list`；缺写驱动、下载、增删改 |
+
+> README 的"开发阶段"表已过时（停在 M2 计划中），将随 M4 一并更新。
+
+### 两条修订原则
+
+1. **AI 服务放到最后**：原 M7（Python AI 集成）调整为整条路线的**最后一个里程碑**，先把纯文件网盘能力做扎实再接 RAG。
+2. **前端/用户体验拆进每个里程碑**：取消"最后统一做前端"的原 M10，改为**每个里程碑自带前端切片**，后端能力一落地就在 `web/` 同步可用。
+
+### 修订后执行顺序
+
+| 新序号 | 里程碑 | 后端范围（沿用原章节设计）| 本阶段前端切片 |
+| --- | --- | --- | --- |
+| **M4** | 文件读写闭环 | 原 M4：get/dirs/mkdir/rename/move/copy/remove/上传/下载 | 文件管理 UI：上传、下载、新建目录、重命名、移动、删除 |
+| **M5** | Meta/隐藏/下载签名 | 原 M5 | 目录密码输入框、隐藏项处理、README/Header 渲染 |
+| **M6** | 任务中心/文件名索引 | 原 M6 | 任务进度面板、文件名搜索框与结果页 |
+| **M7** | 分享与公开访问 | 原 M8 | 分享管理页、公开分享页、密码校验 |
+| **M8** | 协议兼容与更多驱动 | 原 M9 | 存储管理页驱动配置增强（多驱动表单）|
+| **M9（最后）** | Python AI 集成 | 原 M7 | AI 语义搜索页、RAG 流式问答页 |
+
+> 每个里程碑的"前端切片"与后端能力放在**同一里程碑内验收**，但可拆为后端、前端两个独立提交批次。
+
 ## 方案设计
 
 ### 总体开发原则
@@ -369,6 +403,11 @@ docker compose up -d mysql postgres redis
 - 大文件上传进入任务中心。
 - 跨存储 copy 走任务。
 
+前端切片（本阶段同步）：
+
+- 文件浏览页支持上传（拖拽/选择）、下载、新建目录、重命名、移动、删除。
+- 写操作后刷新列表；错误码映射为用户可读提示。
+
 验收标准：
 
 - 本地目录可完整 list/get/download/upload。
@@ -405,6 +444,11 @@ docker compose up -d mysql postgres redis
    - hide 正则过滤。
    - sign 过期。
    - sign 路径不匹配。
+
+前端切片（本阶段同步）：
+
+- 目录密码输入框与记忆；隐藏项对普通用户不展示。
+- README/Header 内容在文件页渲染。
 
 验收标准：
 
@@ -447,15 +491,100 @@ docker compose up -d mysql postgres redis
    - 重建索引。
    - 搜索分页。
 
+前端切片（本阶段同步）：
+
+- 上传/复制任务进度面板（列表 + 进度条 + 取消）。
+- 顶部文件名搜索框与搜索结果页（分页）。
+
 验收标准：
 
 - 大文件上传可以作为任务执行。
 - `/api/fs/search` 能按文件名搜索。
 - 重建索引可查看进度。
 
-### M7：Python AI 服务集成
+### M7：分享、预览与公开访问
 
-目标：Java 主服务与 Python RAG 服务联调，实现语义搜索和问答代理。
+目标：实现公开分享链接、密码、过期、访问次数和下载控制。
+
+接口签名：
+
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| `POST` | `/api/share/create` | 创建分享 |
+| `POST` | `/api/share/update` | 更新分享 |
+| `POST` | `/api/share/delete` | 删除分享 |
+| `GET` | `/api/share/list` | 我的分享 |
+| `GET` | `/api/public/share/info` | 公开分享信息 |
+| `POST` | `/api/public/share/auth` | 分享密码校验 |
+| `POST` | `/api/public/share/list` | 分享目录列表 |
+| `POST` | `/api/public/share/get` | 分享文件详情 |
+| `GET` | `/sd/{shareId}/**` | 分享下载 |
+
+实现步骤：
+
+1. 新增 `domain/share/Share.java`。
+2. 新增 `application/share/ShareApplicationService.java`。
+3. 新增 `ShareTokenService`。
+4. 新增 `ShareController.java`。
+5. 新增 `PublicShareController.java`。
+6. 分享下载复用 `FsApplicationService.link`。
+7. 增加测试：
+   - 密码分享。
+   - 过期分享。
+   - 阅后即焚。
+   - 禁止下载。
+
+验收标准：
+
+- 可创建公开分享。
+- 分享密码正确后可访问。
+- 过期和访问次数限制生效。
+
+前端切片（本阶段同步）：
+
+- 分享管理页（创建/更新/删除/列表，可设密码、过期、访问次数）。
+- 公开分享页与密码校验入口。
+
+### M8：协议兼容与更多驱动
+
+目标：扩展 WebDAV、S3 兼容协议和更多存储驱动。
+
+优先级：
+
+1. WebDAV 读写。
+2. S3 兼容只读。
+3. S3 兼容读写。
+4. WebDAV 远程驱动。
+5. S3 远程驱动。
+6. Alist v3 远程驱动。
+7. 阿里云盘、OneDrive 等云盘驱动。
+
+实现步骤：
+
+1. 新增 `infrastructure/protocol/webdav`。
+2. 新增 `infrastructure/protocol/s3`。
+3. 复用 `FsApplicationService` 做协议后端。
+4. 增加协议权限位校验：
+   - WebDAV read/write。
+   - S3 read/write。
+5. 每个驱动独立测试：
+   - 配置解析。
+   - list/get/link。
+   - 上传下载。
+   - 错误映射。
+
+验收标准：
+
+- WebDAV 客户端可挂载并浏览 Local 存储。
+- S3 兼容客户端可列 bucket/object。
+
+前端切片（本阶段同步）：
+
+- 存储管理页驱动配置表单按驱动类型动态渲染（Local/WebDAV/S3 等）。
+
+### M9（最后）：Python AI 服务集成
+
+目标：Java 主服务与 Python RAG 服务联调，实现语义搜索和问答代理。本里程碑为整条路线最后一步，待文件网盘能力（M4–M8）全部完成后再接入 AI。
 
 接口签名：
 
@@ -506,113 +635,15 @@ docker compose up -d mysql postgres redis
 - 内部下载 URL 必须短期有效。
 - Python 返回的 `userFileId` 必须由 Java 再查一次权限。
 
+前端切片（本阶段同步）：
+
+- AI 语义/混合搜索页；RAG 问答页（SSE 流式渲染）。
+
 验收标准：
 
 - 上传 PDF 后可以触发 AI 索引。
 - `/api/ai/search/hybrid` 返回相关 chunk。
 - `/api/ai/chat` 可以流式回答。
-
-### M8：分享、预览与公开访问
-
-目标：实现公开分享链接、密码、过期、访问次数和下载控制。
-
-接口签名：
-
-| 方法 | 路径 | 说明 |
-| --- | --- | --- |
-| `POST` | `/api/share/create` | 创建分享 |
-| `POST` | `/api/share/update` | 更新分享 |
-| `POST` | `/api/share/delete` | 删除分享 |
-| `GET` | `/api/share/list` | 我的分享 |
-| `GET` | `/api/public/share/info` | 公开分享信息 |
-| `POST` | `/api/public/share/auth` | 分享密码校验 |
-| `POST` | `/api/public/share/list` | 分享目录列表 |
-| `POST` | `/api/public/share/get` | 分享文件详情 |
-| `GET` | `/sd/{shareId}/**` | 分享下载 |
-
-实现步骤：
-
-1. 新增 `domain/share/Share.java`。
-2. 新增 `application/share/ShareApplicationService.java`。
-3. 新增 `ShareTokenService`。
-4. 新增 `ShareController.java`。
-5. 新增 `PublicShareController.java`。
-6. 分享下载复用 `FsApplicationService.link`。
-7. 增加测试：
-   - 密码分享。
-   - 过期分享。
-   - 阅后即焚。
-   - 禁止下载。
-
-验收标准：
-
-- 可创建公开分享。
-- 分享密码正确后可访问。
-- 过期和访问次数限制生效。
-
-### M9：协议兼容与更多驱动
-
-目标：扩展 WebDAV、S3 兼容协议和更多存储驱动。
-
-优先级：
-
-1. WebDAV 读写。
-2. S3 兼容只读。
-3. S3 兼容读写。
-4. WebDAV 远程驱动。
-5. S3 远程驱动。
-6. Alist v3 远程驱动。
-7. 阿里云盘、OneDrive 等云盘驱动。
-
-实现步骤：
-
-1. 新增 `infrastructure/protocol/webdav`。
-2. 新增 `infrastructure/protocol/s3`。
-3. 复用 `FsApplicationService` 做协议后端。
-4. 增加协议权限位校验：
-   - WebDAV read/write。
-   - S3 read/write。
-5. 每个驱动独立测试：
-   - 配置解析。
-   - list/get/link。
-   - 上传下载。
-   - 错误映射。
-
-验收标准：
-
-- WebDAV 客户端可挂载并浏览 Local 存储。
-- S3 兼容客户端可列 bucket/object。
-
-### M10：前端控制台与用户体验
-
-目标：提供可用的 Web 控制台，覆盖文件浏览、上传、分享、搜索和 AI 问答。
-
-页面规划：
-
-1. 登录页。
-2. 文件浏览页。
-3. 上传任务面板。
-4. 分享管理页。
-5. AI 搜索页。
-6. RAG 问答页。
-7. 管理后台：
-   - 用户管理。
-   - 角色管理。
-   - 存储管理。
-   - Meta 管理。
-   - 索引管理。
-   - 系统设置。
-
-实现方式：
-
-- 如果后续选择 Vue/React，前端放在 `web/`。
-- Java 主服务只提供 API，不在 Controller 中混写页面逻辑。
-- 前端静态资源可在生产构建后由 Java 或独立 Nginx 托管。
-
-验收标准：
-
-- 普通用户可以完成浏览、上传、下载、分享、AI 问答。
-- 管理员可以完成存储和权限配置。
 
 ## 横向能力建设
 
@@ -670,13 +701,12 @@ docker compose up -d mysql postgres redis
 2. M1 数据库与迁移体系。
 3. M2 认证、用户与角色权限。
 4. M3 存储挂载与 LocalDriver。
-5. M4 文件系统读写闭环。
-6. M5 目录 Meta、隐藏规则与下载签名。
-7. M6 任务中心与文件名索引。
-8. M7 Python AI 服务集成。
-9. M8 分享、预览与公开访问。
-10. M9 协议兼容与更多驱动。
-11. M10 前端控制台与用户体验。
+5. M4 文件系统读写闭环（含文件管理前端）。
+6. M5 目录 Meta、隐藏规则与下载签名（含目录密码/隐藏前端）。
+7. M6 任务中心与文件名索引（含任务面板/搜索前端）。
+8. M7 分享、预览与公开访问（含分享管理/公开页前端）。
+9. M8 协议兼容与更多驱动（含存储配置前端）。
+10. M9（最后）Python AI 服务集成（含 AI 搜索/问答前端）。
 
 每个阶段完成后必须更新：
 
@@ -687,5 +717,7 @@ docker compose up -d mysql postgres redis
 
 ## 下一步建议
 
-下一阶段从 M0 开始，先补齐 `docker-compose.yml`、数据库连接配置和本地启动文档。完成后再进入 M1 的 Flyway 与实体建模。
+M0–M3 已完成（见上方"进度对账"）。**下一阶段为 M4 文件读写闭环**：补齐 `DriverWriter` 写驱动、`/d/**` 下载链路、`FsApplicationService` 的 get/dirs/增删改/上传，并在 `web/` 同步文件管理 UI。
+
+M4 详细设计见 `docs/2026-06-07-m4-readwrite.md`，按"先设计、批准后编码"的工作流推进。AI 集成（原 M7）按本次修订延后至最后一个里程碑 M9。
 

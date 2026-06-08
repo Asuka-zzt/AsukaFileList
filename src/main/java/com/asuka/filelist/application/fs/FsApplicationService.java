@@ -1,6 +1,13 @@
 package com.asuka.filelist.application.fs;
 
+import com.asuka.filelist.api.request.FsCopyRequest;
+import com.asuka.filelist.api.request.FsDirsRequest;
+import com.asuka.filelist.api.request.FsGetRequest;
 import com.asuka.filelist.api.request.FsListRequest;
+import com.asuka.filelist.api.request.FsMkdirRequest;
+import com.asuka.filelist.api.request.FsMoveRequest;
+import com.asuka.filelist.api.request.FsRemoveRequest;
+import com.asuka.filelist.api.request.FsRenameRequest;
 import com.asuka.filelist.api.response.FileObjectResponse;
 import com.asuka.filelist.api.response.FsListResponse;
 import com.asuka.filelist.application.storage.MountedStorageRegistry;
@@ -12,11 +19,16 @@ import com.asuka.filelist.common.exception.BusinessException;
 import com.asuka.filelist.common.exception.ErrorCode;
 import com.asuka.filelist.common.path.PathUtils;
 import com.asuka.filelist.domain.fs.BasicFileObject;
+import com.asuka.filelist.domain.fs.FileLink;
 import com.asuka.filelist.domain.fs.FileObject;
 import com.asuka.filelist.domain.storage.Storage;
+import com.asuka.filelist.domain.user.PermissionBits;
 import com.asuka.filelist.infrastructure.driver.DriverContext;
 import com.asuka.filelist.infrastructure.driver.DriverGetter;
+import com.asuka.filelist.infrastructure.driver.DriverWriter;
+import com.asuka.filelist.infrastructure.driver.LinkArgs;
 import com.asuka.filelist.infrastructure.driver.ListArgs;
+import com.asuka.filelist.infrastructure.driver.UploadFile;
 import com.asuka.filelist.infrastructure.security.CurrentUser;
 import org.springframework.stereotype.Service;
 
@@ -29,7 +41,7 @@ import java.util.Map;
 import java.util.Optional;
 
 /**
- * 文件系统读服务，M3 接入存储挂载和只读驱动列表能力。
+ * 文件系统应用服务。M3 接入存储挂载与只读列表，M4 补全 get/dirs 与增删改/上传/下载读写闭环。
  */
 @Service
 public class FsApplicationService {
@@ -66,6 +78,190 @@ public class FsApplicationService {
             return listResolvedPath(resolved.get(), page, perPage, request.refresh(), currentUser);
         }
         return listVirtualPath(visiblePath, page, perPage, currentUser);
+    }
+
+    /**
+     * M4: 获取单个文件或目录详情。
+     */
+    public FileObjectResponse get(CurrentUser currentUser, FsGetRequest request) {
+        requireReadable(currentUser, PathUtils.fixAndCleanPath(request.path()));
+        ResolvedStoragePath resolved = storageResolver.resolve(internalPath(currentUser, request.path()));
+        FileObject object = getObject(resolved.runtime(), resolved.actualPath());
+        return toResponse(resolved.runtime().storage(), object, currentUser.basePath());
+    }
+
+    /**
+     * M4: 仅返回目录列表，复用 list 的权限与解析逻辑。
+     */
+    public List<FileObjectResponse> dirs(CurrentUser currentUser, FsDirsRequest request) {
+        FsListResponse listed = list(currentUser, new FsListRequest(request.path(), request.password(), false, 1, -1));
+        return listed.content().stream().filter(FileObjectResponse::isDir).toList();
+    }
+
+    /**
+     * M4: 新建目录，path 为待创建目录完整路径。
+     */
+    public FileObjectResponse mkdir(CurrentUser currentUser, FsMkdirRequest request) {
+        requirePermission(currentUser, PathUtils.fixAndCleanPath(request.path()), PermissionBits.WRITE_UPLOAD);
+        ResolvedStoragePath resolved = storageResolver.resolve(internalPath(currentUser, request.path()));
+        String actualPath = resolved.actualPath();
+        if ("/".equals(actualPath)) {
+            throw new BusinessException(ErrorCode.BAD_REQUEST, "Cannot create mount root directory");
+        }
+        FileObject created = writerOf(resolved.runtime())
+                .mkdir(contextOf(resolved), parentOf(actualPath), lastSegment(actualPath));
+        return toResponse(resolved.runtime().storage(), created, currentUser.basePath());
+    }
+
+    /**
+     * M4: 重命名文件或目录。
+     */
+    public void rename(CurrentUser currentUser, FsRenameRequest request) {
+        PathUtils.validateNameComponent(request.name());
+        requirePermission(currentUser, PathUtils.fixAndCleanPath(request.path()), PermissionBits.RENAME);
+        ResolvedStoragePath resolved = storageResolver.resolve(internalPath(currentUser, request.path()));
+        writerOf(resolved.runtime()).rename(contextOf(resolved), resolved.actualPath(), request.name());
+    }
+
+    /**
+     * M4: 将 srcDir 下的 names 移动到 dstDir（同存储）。
+     */
+    public void move(CurrentUser currentUser, FsMoveRequest request) {
+        batchTransfer(currentUser, request.srcDir(), request.dstDir(), request.names(), PermissionBits.MOVE, true);
+    }
+
+    /**
+     * M4: 将 srcDir 下的 names 复制到 dstDir（同存储）。
+     */
+    public void copy(CurrentUser currentUser, FsCopyRequest request) {
+        batchTransfer(currentUser, request.srcDir(), request.dstDir(), request.names(), PermissionBits.COPY, false);
+    }
+
+    /**
+     * M4: 删除 dir 下的 names 文件或目录。
+     */
+    public void remove(CurrentUser currentUser, FsRemoveRequest request) {
+        requirePermission(currentUser, PathUtils.fixAndCleanPath(request.dir()), PermissionBits.REMOVE);
+        ResolvedStoragePath resolved = storageResolver.resolve(internalPath(currentUser, request.dir()));
+        DriverWriter writer = writerOf(resolved.runtime());
+        DriverContext context = contextOf(resolved);
+        for (String name : request.names()) {
+            PathUtils.validateNameComponent(name);
+            writer.remove(context, joinActual(resolved.actualPath(), name));
+        }
+    }
+
+    /**
+     * M4: 流式上传到 rawDirPath 目录。
+     */
+    public FileObjectResponse put(CurrentUser currentUser, String rawDirPath, UploadFile file) {
+        PathUtils.validateNameComponent(file.name());
+        requirePermission(currentUser, PathUtils.fixAndCleanPath(rawDirPath), PermissionBits.WRITE_UPLOAD);
+        ResolvedStoragePath resolved = storageResolver.resolve(internalPath(currentUser, rawDirPath));
+        FileObject written = writerOf(resolved.runtime()).put(contextOf(resolved), resolved.actualPath(), file);
+        return toResponse(resolved.runtime().storage(), written, currentUser.basePath());
+    }
+
+    /**
+     * M4: 解析下载目标，返回文件元数据与驱动链接。
+     */
+    public FsDownloadTarget link(CurrentUser currentUser, String rawPath, LinkArgs args) {
+        requireReadable(currentUser, PathUtils.fixAndCleanPath(rawPath));
+        ResolvedStoragePath resolved = storageResolver.resolve(internalPath(currentUser, rawPath));
+        FileObject file = getObject(resolved.runtime(), resolved.actualPath());
+        if (file.directory()) {
+            throw new BusinessException(ErrorCode.BAD_REQUEST, "Cannot download a directory");
+        }
+        FileLink fileLink = resolved.runtime().driver().link(contextOf(resolved), file, args);
+        return new FsDownloadTarget(file, fileLink);
+    }
+
+    /**
+     * 拼接用户 basePath 得到内部解析路径。
+     */
+    private String internalPath(CurrentUser currentUser, String rawPath) {
+        return PathUtils.joinBasePath(currentUser.basePath(), rawPath);
+    }
+
+    /**
+     * 读权限校验：有效权限为 0 时拒绝（与 list 一致）。
+     */
+    private void requireReadable(CurrentUser currentUser, String visiblePath) {
+        if (permissionApplicationService.resolvePermission(currentUser, visiblePath) == 0) {
+            throw new BusinessException(ErrorCode.PERMISSION_DENIED, "Permission denied");
+        }
+    }
+
+    /**
+     * 写权限位校验。
+     */
+    private void requirePermission(CurrentUser currentUser, String visiblePath, int mask) {
+        if (!permissionApplicationService.hasPermission(currentUser, visiblePath, mask)) {
+            throw new BusinessException(ErrorCode.PERMISSION_DENIED, "Permission denied");
+        }
+    }
+
+    /**
+     * 取驱动写能力，不支持时抛 DRIVER_NOT_SUPPORTED。
+     */
+    private DriverWriter writerOf(MountedStorageRuntime runtime) {
+        if (runtime.driver() instanceof DriverWriter writer) {
+            return writer;
+        }
+        throw new BusinessException(ErrorCode.DRIVER_NOT_SUPPORTED, "Driver does not support write operations");
+    }
+
+    /**
+     * 构造驱动调用上下文。
+     */
+    private DriverContext contextOf(ResolvedStoragePath resolved) {
+        return new DriverContext(resolved.requestPath(), Map.of());
+    }
+
+    /**
+     * 移动/复制公共逻辑，校验权限与同存储约束后逐项执行。
+     */
+    private void batchTransfer(CurrentUser currentUser, String srcDir, String dstDir, List<String> names, int mask, boolean move) {
+        requirePermission(currentUser, PathUtils.fixAndCleanPath(srcDir), mask);
+        requirePermission(currentUser, PathUtils.fixAndCleanPath(dstDir), mask);
+        ResolvedStoragePath src = storageResolver.resolve(internalPath(currentUser, srcDir));
+        ResolvedStoragePath dst = storageResolver.resolve(internalPath(currentUser, dstDir));
+        if (!src.runtime().storage().id().equals(dst.runtime().storage().id())) {
+            throw new BusinessException(ErrorCode.DRIVER_NOT_SUPPORTED, "Cross-storage transfer is not supported yet");
+        }
+        DriverWriter writer = writerOf(src.runtime());
+        DriverContext context = contextOf(src);
+        for (String name : names) {
+            PathUtils.validateNameComponent(name);
+            String srcPath = joinActual(src.actualPath(), name);
+            if (move) {
+                writer.move(context, srcPath, dst.actualPath());
+            } else {
+                writer.copy(context, srcPath, dst.actualPath());
+            }
+        }
+    }
+
+    /**
+     * 拼接目录 actualPath 与子项名。
+     */
+    private String joinActual(String dir, String name) {
+        return "/".equals(dir) ? "/" + name : dir + "/" + name;
+    }
+
+    /**
+     * 取路径最后一段名称。
+     */
+    private String lastSegment(String path) {
+        return path.substring(path.lastIndexOf('/') + 1);
+    }
+
+    /**
+     * 取父目录 actualPath，根的父仍为根。
+     */
+    private String parentOf(String path) {
+        int idx = path.lastIndexOf('/');
+        return idx <= 0 ? "/" : path.substring(0, idx);
     }
 
     /**
