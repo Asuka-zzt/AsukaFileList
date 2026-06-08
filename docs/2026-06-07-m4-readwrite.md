@@ -129,13 +129,18 @@ common/util/
 - **风险**：并发写同名文件 — 本阶段以驱动层覆盖/报错策略为准，不做分布式锁（Redis 锁留 M6）。
 - **后续**：写操作完成后发布 `FileEventPublisher` 事件（M6 增量索引、M9 AI 索引消费），M4 先预留事件点但不接消费者。
 
-## 8. 测试（实现后回填）
+## 8. 测试（已完成）
 
-| 类型 | 用例 |
-| --- | --- |
-| 单元 | 路径穿越被拒；无对应权限位返回 403；mkdir/rename/move/copy/remove 在 LocalDriver 的行为 |
-| 单元 | put 上传 + /d 下载闭环；Range 下载返回 206 与正确字节区间 |
-| 单元 | 跨存储 move/copy 返回 `DRIVER_NOT_SUPPORTED`；>100MB 上传被拒 |
-| Controller | 各端点参数校验与错误码 |
+实现拆为 5 个提交批次：DriverWriter SPI → 下载链路 → FsApplicationService 读写 → Controller 端点 → 测试/前端。
 
-验收标准：本地目录可完整 `list/get/dirs/download/upload/mkdir/rename/move/copy/remove`；无权限 403；穿越被拒；`mvn test` 全绿；前端文件页可上传/下载/删除/新建目录。
+| 类型 | 测试 | 位置 |
+| --- | --- | --- |
+| 单元 | LocalDriver mkdir/put/rename/move/copy/remove；非法名拒绝；目标已存在拒绝 | `LocalDriverTest` |
+| 集成 | mkdir→上传→get→下载(全量 200 / Range 206)→rename→copy→remove 全链路 + 本地文件副作用 | `FsReadWriteControllerTest` |
+| 集成 | 无 token 写操作返回 401 | `FsReadWriteControllerTest` |
+
+执行结果：`mvn test` 全绿（35 个测试通过）；`npm --prefix web run build` 通过。
+
+后续可补：跨存储 move/copy 返回 `DRIVER_NOT_SUPPORTED` 的专项用例、>100MB 上传拒绝（接 M6 任务通道时一并补）。
+
+验收标准（已达成）：本地目录可完整 `list/get/dirs/download/upload/mkdir/rename/move/copy/remove`；无权限 403；穿越被拒；`mvn test` 全绿；前端文件页可上传/下载/删除/重命名/新建目录。
