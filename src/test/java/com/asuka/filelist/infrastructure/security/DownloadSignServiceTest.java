@@ -82,7 +82,8 @@ class DownloadSignServiceTest {
                         AsukaProperties.DataSize.ofMegabytes(10)
                 ),
                 new AsukaProperties.Bootstrap("admin", "password", "guest", "", false),
-                new AsukaProperties.Download(ttlSeconds, signAll)
+                new AsukaProperties.Download(ttlSeconds, signAll),
+                new AsukaProperties.Share(7200)
         );
     }
 }
