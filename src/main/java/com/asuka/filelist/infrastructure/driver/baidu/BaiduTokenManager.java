@@ -12,6 +12,7 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
+import java.util.function.Consumer;
 
 /**
  * 百度 access_token 管理：用 refresh_token 换取并按 expires_in 内存缓存，提前 60s 刷新。
@@ -26,16 +27,26 @@ public class BaiduTokenManager {
     private final ObjectMapper objectMapper;
     private final BaiduDriverAddition addition;
     private final String oauthBase;
+    private final Consumer<String> onRefreshTokenRotated;
 
     private volatile String cachedToken;
     private volatile Instant expiresAt = Instant.EPOCH;
+    private volatile String currentRefreshToken;
 
     public BaiduTokenManager(HttpClient httpClient, ObjectMapper objectMapper,
                              BaiduDriverAddition addition, String oauthBase) {
+        this(httpClient, objectMapper, addition, oauthBase, null);
+    }
+
+    public BaiduTokenManager(HttpClient httpClient, ObjectMapper objectMapper,
+                             BaiduDriverAddition addition, String oauthBase,
+                             Consumer<String> onRefreshTokenRotated) {
         this.httpClient = httpClient;
         this.objectMapper = objectMapper;
         this.addition = addition;
         this.oauthBase = oauthBase;
+        this.onRefreshTokenRotated = onRefreshTokenRotated;
+        this.currentRefreshToken = addition.refreshToken();
     }
 
     /**
@@ -55,7 +66,7 @@ public class BaiduTokenManager {
     private void refresh() {
         String url = oauthBase + "/oauth/2.0/token"
                 + "?grant_type=refresh_token"
-                + "&refresh_token=" + encode(addition.refreshToken())
+                + "&refresh_token=" + encode(currentRefreshToken)
                 + "&client_id=" + encode(addition.clientId())
                 + "&client_secret=" + encode(addition.clientSecret());
         try {
@@ -76,10 +87,29 @@ public class BaiduTokenManager {
             long expiresIn = node.path("expires_in").asLong(3600);
             this.cachedToken = token.asText();
             this.expiresAt = Instant.now().plusSeconds(Math.max(0, expiresIn - REFRESH_SKEW_SECONDS));
+            rotateRefreshTokenIfPresent(node);
         } catch (BusinessException ex) {
             throw ex;
         } catch (Exception ex) {
             throw new BusinessException(ErrorCode.BAD_REQUEST, "Baidu token refresh failed: " + ex.getMessage());
+        }
+    }
+
+    /**
+     * 百度轮换 refresh_token：响应若带新值且与当前不同，更新内存并回调持久化。
+     */
+    private void rotateRefreshTokenIfPresent(JsonNode node) {
+        JsonNode rotated = node.get("refresh_token");
+        if (rotated == null) {
+            return;
+        }
+        String newToken = rotated.asText();
+        if (newToken.isBlank() || newToken.equals(currentRefreshToken)) {
+            return;
+        }
+        this.currentRefreshToken = newToken;
+        if (onRefreshTokenRotated != null) {
+            onRefreshTokenRotated.accept(newToken);
         }
     }
 

@@ -58,6 +58,7 @@ public class BaiduDriver implements StorageDriver, DriverGetter, DriverRootProvi
 
     private final ObjectMapper objectMapper;
     private final HttpClient httpClient;
+    private final BaiduRefreshTokenStore refreshTokenStore;
 
     private Storage storage;
     private BaiduDriverAddition addition;
@@ -70,8 +71,13 @@ public class BaiduDriver implements StorageDriver, DriverGetter, DriverRootProvi
     private String uploadBase = "https://d.pcs.baidu.com";
 
     public BaiduDriver(ObjectMapper objectMapper, HttpClient httpClient) {
+        this(objectMapper, httpClient, null);
+    }
+
+    public BaiduDriver(ObjectMapper objectMapper, HttpClient httpClient, BaiduRefreshTokenStore refreshTokenStore) {
         this.objectMapper = objectMapper;
         this.httpClient = httpClient;
+        this.refreshTokenStore = refreshTokenStore;
     }
 
     @Override
@@ -106,13 +112,23 @@ public class BaiduDriver implements StorageDriver, DriverGetter, DriverRootProvi
                 || addition.clientSecret() == null || addition.clientSecret().isBlank()) {
             throw new BusinessException(ErrorCode.BAD_REQUEST, "Baidu refreshToken/clientId/clientSecret are required");
         }
-        this.tokenManager = new BaiduTokenManager(httpClient, objectMapper, addition, oauthBase);
+        this.tokenManager = new BaiduTokenManager(httpClient, objectMapper, addition, oauthBase,
+                this::persistRotatedRefreshToken);
         this.tokenManager.getAccessToken();
     }
 
     @Override
     public void drop(DriverContext context) {
         this.tokenManager = null;
+    }
+
+    /**
+     * 百度轮换出新 refresh_token 时回写到 storages.addition（无 store 或无 id 时跳过）。
+     */
+    private void persistRotatedRefreshToken(String newRefreshToken) {
+        if (refreshTokenStore != null && storage != null && storage.id() != null) {
+            refreshTokenStore.update(storage.id(), newRefreshToken);
+        }
     }
 
     /**

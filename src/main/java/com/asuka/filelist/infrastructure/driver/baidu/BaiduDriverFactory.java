@@ -21,10 +21,12 @@ public class BaiduDriverFactory implements StorageDriverFactory {
     public static final String DRIVER_NAME = "BaiduNetdisk";
 
     private final ObjectMapper objectMapper;
+    private final BaiduRefreshTokenStore refreshTokenStore;
     private final HttpClient httpClient;
 
-    public BaiduDriverFactory(ObjectMapper objectMapper) {
+    public BaiduDriverFactory(ObjectMapper objectMapper, BaiduRefreshTokenStore refreshTokenStore) {
         this.objectMapper = objectMapper;
+        this.refreshTokenStore = refreshTokenStore;
         this.httpClient = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(15))
                 .followRedirects(HttpClient.Redirect.NORMAL)
@@ -53,6 +55,6 @@ public class BaiduDriverFactory implements StorageDriverFactory {
 
     @Override
     public StorageDriver create() {
-        return new BaiduDriver(objectMapper, httpClient);
+        return new BaiduDriver(objectMapper, httpClient, refreshTokenStore);
     }
 }

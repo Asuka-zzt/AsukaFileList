@@ -11,6 +11,9 @@ import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.net.http.HttpClient;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -26,20 +29,36 @@ class BaiduTokenManagerTest {
     private HttpServer server;
     private final AtomicInteger calls = new AtomicInteger();
     private volatile long expiresIn = 3600;
+    private final List<String> seenRefreshTokens = Collections.synchronizedList(new ArrayList<>());
 
     @BeforeEach
     void setUp() throws IOException {
         server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         server.createContext("/oauth/2.0/token", exchange -> {
-            calls.incrementAndGet();
-            byte[] body = ("{\"access_token\":\"tok-" + calls.get() + "\",\"expires_in\":" + expiresIn + "}")
-                    .getBytes(StandardCharsets.UTF_8);
+            int n = calls.incrementAndGet();
+            seenRefreshTokens.add(queryParam(exchange.getRequestURI().getRawQuery(), "refresh_token"));
+            // 百度轮换：每次返回新的 refresh_token
+            byte[] body = ("{\"access_token\":\"tok-" + n + "\",\"expires_in\":" + expiresIn
+                    + ",\"refresh_token\":\"newrt-" + n + "\"}").getBytes(StandardCharsets.UTF_8);
             exchange.sendResponseHeaders(200, body.length);
             try (OutputStream os = exchange.getResponseBody()) {
                 os.write(body);
             }
         });
         server.start();
+    }
+
+    private static String queryParam(String query, String key) {
+        if (query == null) {
+            return null;
+        }
+        for (String pair : query.split("&")) {
+            int eq = pair.indexOf('=');
+            if (eq > 0 && pair.substring(0, eq).equals(key)) {
+                return pair.substring(eq + 1);
+            }
+        }
+        return null;
     }
 
     @AfterEach
@@ -76,6 +95,25 @@ class BaiduTokenManagerTest {
         assertThat(first).isEqualTo("tok-1");
         assertThat(second).isEqualTo("tok-2");
         assertThat(calls.get()).isEqualTo(2);
+    }
+
+    /**
+     * 百度轮换 refresh_token：每次刷新用上一次返回的新 token，并回调持久化。
+     */
+    @Test
+    void rotatesAndPersistsRefreshToken() {
+        expiresIn = 30; // 立即过期，强制每次刷新
+        List<String> persisted = Collections.synchronizedList(new ArrayList<>());
+        BaiduDriverAddition addition = new BaiduDriverAddition("refresh", "cid", "secret", "/");
+        BaiduTokenManager manager = new BaiduTokenManager(
+                httpClient, objectMapper, addition, baseUrl(), persisted::add);
+
+        manager.getAccessToken();
+        manager.getAccessToken();
+
+        // 首次用原始 token，二次用上次轮换出的新 token
+        assertThat(seenRefreshTokens).containsExactly("refresh", "newrt-1");
+        assertThat(persisted).containsExactly("newrt-1", "newrt-2");
     }
 
     private BaiduTokenManager manager() {
