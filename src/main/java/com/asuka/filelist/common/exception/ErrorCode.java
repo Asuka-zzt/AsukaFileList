@@ -11,6 +11,7 @@ public enum ErrorCode {
     STORAGE_NOT_FOUND("STORAGE_NOT_FOUND", "Storage not found", HttpStatus.NOT_FOUND),
     OBJECT_NOT_FOUND("OBJECT_NOT_FOUND", "Object not found", HttpStatus.NOT_FOUND),
     DRIVER_NOT_SUPPORTED("DRIVER_NOT_SUPPORTED", "Driver operation is not supported", HttpStatus.METHOD_NOT_ALLOWED),
+    TASK_NOT_FOUND("TASK_NOT_FOUND", "Task not found", HttpStatus.NOT_FOUND),
     INTERNAL_ERROR("INTERNAL_ERROR", "Internal server error", HttpStatus.INTERNAL_SERVER_ERROR),
     AI_SERVICE_ERROR("AI_SERVICE_ERROR", "AI service error", HttpStatus.BAD_GATEWAY);
 

@@ -8,9 +8,12 @@ import com.asuka.filelist.api.request.FsMkdirRequest;
 import com.asuka.filelist.api.request.FsMoveRequest;
 import com.asuka.filelist.api.request.FsRemoveRequest;
 import com.asuka.filelist.api.request.FsRenameRequest;
+import com.asuka.filelist.api.request.FsSearchRequest;
 import com.asuka.filelist.api.response.FileObjectResponse;
 import com.asuka.filelist.api.response.FsListResponse;
+import com.asuka.filelist.api.response.SearchPageResponse;
 import com.asuka.filelist.application.fs.FsApplicationService;
+import com.asuka.filelist.application.search.FileNameIndexService;
 import com.asuka.filelist.common.exception.BusinessException;
 import com.asuka.filelist.common.exception.ErrorCode;
 import com.asuka.filelist.common.path.PathUtils;
@@ -38,9 +41,11 @@ import java.util.List;
 public class FsController {
 
     private final FsApplicationService fsApplicationService;
+    private final FileNameIndexService fileNameIndexService;
 
-    public FsController(FsApplicationService fsApplicationService) {
+    public FsController(FsApplicationService fsApplicationService, FileNameIndexService fileNameIndexService) {
         this.fsApplicationService = fsApplicationService;
+        this.fileNameIndexService = fileNameIndexService;
     }
 
     @PostMapping("/list")
@@ -85,6 +90,15 @@ public class FsController {
     public ApiResponse<Void> remove(CurrentUser currentUser, @Valid @RequestBody FsRemoveRequest request) {
         fsApplicationService.remove(currentUser, request);
         return ApiResponse.ok();
+    }
+
+    /**
+     * M6: 文件名搜索，按当前用户权限与 basePath 过滤后分页返回。
+     */
+    @PostMapping("/search")
+    public ApiResponse<SearchPageResponse> search(CurrentUser currentUser, @Valid @RequestBody FsSearchRequest request) {
+        return ApiResponse.success(fileNameIndexService.search(currentUser,
+                request.keyword(), request.effectivePage(), request.effectivePerPage()));
     }
 
     /**

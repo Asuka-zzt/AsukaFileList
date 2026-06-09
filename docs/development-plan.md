@@ -26,9 +26,10 @@ AsukaFileList 需要从当前 Java Spring Boot 脚手架逐步演进为完整的
 | M3 存储挂载/LocalDriver | ✅ 已完成 | AdminStorage/AdminDriver + LocalDriver（只读：list/get/link）|
 | M4 文件读写闭环 | ✅ 已完成 | DriverWriter + 下载链路 + get/dirs/增删改/上传 + 前端文件管理 |
 | M5 Meta/隐藏/下载签名 | ✅ 已完成 | AdminMeta + 目录密码/隐藏/README/Header + HMAC 下载签名 + 前端密码框/README |
-| M6 任务中心/文件名索引 | 🔴 进行中（当前前沿）| 待开发 |
+| M6 任务中心/文件名索引 | ✅ 已完成 | 进程内异步任务（进度/取消）+ 文件名索引/搜索 + 写操作增量索引 + 前端任务面板/搜索页 |
+| M7 分享与公开访问 | 🔴 进行中（当前前沿）| 待开发 |
 
-> README 的"开发阶段"表已随 M5 更新至 M0–M5 ✅、M6 计划中。
+> README 的"开发阶段"表已随 M6 更新至 M0–M6 ✅、M7 计划中。
 
 ### 两条修订原则
 
@@ -719,7 +720,7 @@ docker compose up -d mysql postgres redis
 
 ## 下一步建议
 
-M0–M5 已完成（见上方"进度对账"）。**下一阶段为 M6 任务中心与文件名索引**：实现长耗时任务（上传/复制/索引重建）、`file_index_nodes` 文件名索引与 `/api/fs/search`，并在 `web/` 同步任务进度面板与搜索页。
+M0–M6 已完成（见上方"进度对账"）。**下一阶段为 M7 分享、预览与公开访问**：公开分享链接、密码/过期/访问次数控制、`/sd/{shareId}/**` 分享下载，并在 `web/` 同步分享管理页与公开分享页。
 
-M4 设计见 `docs/2026-06-07-m4-readwrite.md`，M5 设计见 `docs/2026-06-08-m5-meta-sign.md`，均按"先设计、批准后编码"的工作流推进。AI 集成（原 M7）按本次修订延后至最后一个里程碑 M9。
+M4 设计见 `docs/2026-06-07-m4-readwrite.md`，M5 见 `docs/2026-06-08-m5-meta-sign.md`，M6 见 `docs/2026-06-09-m6-task-index.md`，均按"先设计、批准后编码"的工作流推进。AI 集成（原 M7）按本次修订延后至最后一个里程碑 M9。
 

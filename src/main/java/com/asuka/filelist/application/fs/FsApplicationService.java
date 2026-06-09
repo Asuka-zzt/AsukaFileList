@@ -31,8 +31,10 @@ import com.asuka.filelist.infrastructure.driver.DriverWriter;
 import com.asuka.filelist.infrastructure.driver.LinkArgs;
 import com.asuka.filelist.infrastructure.driver.ListArgs;
 import com.asuka.filelist.infrastructure.driver.UploadFile;
+import com.asuka.filelist.infrastructure.event.FileChangeEvent;
 import com.asuka.filelist.infrastructure.security.CurrentUser;
 import com.asuka.filelist.infrastructure.security.DownloadSignService;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
@@ -55,16 +57,19 @@ public class FsApplicationService {
     private final PermissionApplicationService permissionApplicationService;
     private final MetaApplicationService metaApplicationService;
     private final DownloadSignService downloadSignService;
+    private final ApplicationEventPublisher eventPublisher;
 
     public FsApplicationService(StorageResolver storageResolver, MountedStorageRegistry mountedStorageRegistry,
                                 PermissionApplicationService permissionApplicationService,
                                 MetaApplicationService metaApplicationService,
-                                DownloadSignService downloadSignService) {
+                                DownloadSignService downloadSignService,
+                                ApplicationEventPublisher eventPublisher) {
         this.storageResolver = storageResolver;
         this.mountedStorageRegistry = mountedStorageRegistry;
         this.permissionApplicationService = permissionApplicationService;
         this.metaApplicationService = metaApplicationService;
         this.downloadSignService = downloadSignService;
+        this.eventPublisher = eventPublisher;
     }
 
     /**
@@ -157,6 +162,7 @@ public class FsApplicationService {
         }
         FileObject created = writerOf(resolved.runtime())
                 .mkdir(contextOf(resolved), parentOf(actualPath), lastSegment(actualPath));
+        publishUpsert(resolved.runtime(), created);
         return toResponse(resolved.runtime().storage(), created, currentUser.basePath());
     }
 
@@ -168,6 +174,8 @@ public class FsApplicationService {
         requirePermission(currentUser, PathUtils.fixAndCleanPath(request.path()), PermissionBits.RENAME);
         ResolvedStoragePath resolved = storageResolver.resolve(internalPath(currentUser, request.path()));
         writerOf(resolved.runtime()).rename(contextOf(resolved), resolved.actualPath(), request.name());
+        publishRemove(resolved.runtime(), resolved.actualPath());
+        publishUpsertByPath(resolved.runtime(), joinActual(parentOf(resolved.actualPath()), request.name()));
     }
 
     /**
@@ -194,7 +202,9 @@ public class FsApplicationService {
         DriverContext context = contextOf(resolved);
         for (String name : request.names()) {
             PathUtils.validateNameComponent(name);
-            writer.remove(context, joinActual(resolved.actualPath(), name));
+            String removedPath = joinActual(resolved.actualPath(), name);
+            writer.remove(context, removedPath);
+            publishRemove(resolved.runtime(), removedPath);
         }
     }
 
@@ -206,6 +216,7 @@ public class FsApplicationService {
         requirePermission(currentUser, PathUtils.fixAndCleanPath(rawDirPath), PermissionBits.WRITE_UPLOAD);
         ResolvedStoragePath resolved = storageResolver.resolve(internalPath(currentUser, rawDirPath));
         FileObject written = writerOf(resolved.runtime()).put(contextOf(resolved), resolved.actualPath(), file);
+        publishUpsert(resolved.runtime(), written);
         return toResponse(resolved.runtime().storage(), written, currentUser.basePath());
     }
 
@@ -221,6 +232,32 @@ public class FsApplicationService {
         }
         FileLink fileLink = resolved.runtime().driver().link(contextOf(resolved), file, args);
         return new FsDownloadTarget(file, fileLink);
+    }
+
+    /**
+     * M6: 发布"新建/更新"文件变更事件（已知对象，无需再 get）。
+     */
+    private void publishUpsert(MountedStorageRuntime runtime, FileObject object) {
+        eventPublisher.publishEvent(FileChangeEvent.upsert(
+                runtime.storage().id(), object.path(), object.directory(), object.size()));
+    }
+
+    /**
+     * M6: 按 actualPath 取对象后发布更新事件；索引尽力而为，失败不影响写操作。
+     */
+    private void publishUpsertByPath(MountedStorageRuntime runtime, String actualPath) {
+        try {
+            publishUpsert(runtime, getObject(runtime, actualPath));
+        } catch (RuntimeException ignore) {
+            // 索引为最终一致，获取失败留待 admin 重建
+        }
+    }
+
+    /**
+     * M6: 发布"删除"文件变更事件。
+     */
+    private void publishRemove(MountedStorageRuntime runtime, String actualPath) {
+        eventPublisher.publishEvent(FileChangeEvent.remove(runtime.storage().id(), actualPath));
     }
 
     /**
@@ -281,11 +318,14 @@ public class FsApplicationService {
         for (String name : names) {
             PathUtils.validateNameComponent(name);
             String srcPath = joinActual(src.actualPath(), name);
+            String dstPath = joinActual(dst.actualPath(), name);
             if (move) {
                 writer.move(context, srcPath, dst.actualPath());
+                publishRemove(src.runtime(), srcPath);
             } else {
                 writer.copy(context, srcPath, dst.actualPath());
             }
+            publishUpsertByPath(dst.runtime(), dstPath);
         }
     }
 
