@@ -27,6 +27,16 @@ public class FileTreeWalker {
     }
 
     /**
+     * 从指定 actualPath 目录开始递归遍历其后代，用于子树增量重建。
+     */
+    public void walkSubtree(MountedStorageRuntime runtime, String actualPath, Consumer<FileObject> visitor, TaskProgress progress) {
+        String clean = com.asuka.filelist.common.path.PathUtils.fixAndCleanPath(actualPath);
+        String name = "/".equals(clean) ? "/" : clean.substring(clean.lastIndexOf('/') + 1);
+        FileObject start = new BasicFileObject(clean, clean, name, 0L, Instant.EPOCH, Instant.EPOCH, true, Map.of());
+        walkDir(runtime, start, visitor, progress);
+    }
+
+    /**
      * 递归遍历单个目录。
      */
     private void walkDir(MountedStorageRuntime runtime, FileObject dir, Consumer<FileObject> visitor, TaskProgress progress) {

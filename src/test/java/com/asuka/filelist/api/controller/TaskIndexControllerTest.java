@@ -47,23 +47,23 @@ class TaskIndexControllerTest {
         String admin = login("admin", "test-admin-password");
         long storageId = createStorage(admin, "/m6", tempDir);
         mkdir(admin, "/m6/sub");
-        upload(admin, "/m6/alpha.txt", "a");
-        upload(admin, "/m6/sub/beta.txt", "b");
+        // 使用全局唯一 token，避免与其他测试类在共享 H2 索引中相互污染
+        upload(admin, "/m6/qq6alpha.txt", "a");
+        upload(admin, "/m6/sub/qq6beta.txt", "b");
         upload(admin, "/m6/gamma.log", "g");
 
         // 异步重建索引并等待完成
         long taskId = buildIndex(admin, storageId);
         awaitTaskSuccess(admin, taskId);
 
-        // 搜索 beta -> 命中 /m6/sub/beta.txt
-        List<String> beta = searchPaths(admin, "beta");
-        assertThat(beta).containsExactly("/m6/sub/beta.txt");
+        // 搜索 qq6beta -> 命中 /m6/sub/qq6beta.txt
+        assertThat(searchPaths(admin, "qq6beta")).containsExactly("/m6/sub/qq6beta.txt");
 
-        // 搜索 .txt -> alpha + beta
-        assertThat(searchPaths(admin, ".txt")).containsExactlyInAnyOrder("/m6/alpha.txt", "/m6/sub/beta.txt");
+        // 搜索 qq6 -> alpha + beta（gamma.log 不含 token）
+        assertThat(searchPaths(admin, "qq6")).containsExactlyInAnyOrder("/m6/qq6alpha.txt", "/m6/sub/qq6beta.txt");
 
         // 搜索不存在 -> 空
-        assertThat(searchPaths(admin, "no-such-file")).isEmpty();
+        assertThat(searchPaths(admin, "qq6none")).isEmpty();
 
         // 非 admin 重建 -> 403
         userApplicationService.createSystemUser("idx-guest", "idx-guest-pass", "/", PermissionBits.WRITE_UPLOAD, false, List.of());
@@ -81,17 +81,17 @@ class TaskIndexControllerTest {
         String admin = login("admin", "test-admin-password");
         long storageId = createStorage(admin, "/m6b", tempDir);
         mkdir(admin, "/m6b/inner");
-        upload(admin, "/m6b/outer.txt", "o");
-        upload(admin, "/m6b/inner/treasure.txt", "t");
+        upload(admin, "/m6b/ww6outer.txt", "o");
+        upload(admin, "/m6b/inner/ww6treasure.txt", "t");
         awaitTaskSuccess(admin, buildIndex(admin, storageId));
 
         // 用户根锁定在 /m6b/inner
         userApplicationService.createSystemUser("scoped", "scoped-pass", "/m6b/inner", PermissionBits.WRITE_UPLOAD, false, List.of());
         String scoped = login("scoped", "scoped-pass");
 
-        // 只能搜到 inner 下的 treasure.txt，可见路径剥离 basePath
-        assertThat(searchPaths(scoped, ".txt")).containsExactly("/treasure.txt");
-        assertThat(searchPaths(scoped, "outer")).isEmpty();
+        // 只能搜到 inner 下的 treasure，可见路径剥离 basePath；outer 在根外不可见
+        assertThat(searchPaths(scoped, "ww6")).containsExactly("/ww6treasure.txt");
+        assertThat(searchPaths(scoped, "ww6outer")).isEmpty();
     }
 
     private long buildIndex(String token, long storageId) throws Exception {

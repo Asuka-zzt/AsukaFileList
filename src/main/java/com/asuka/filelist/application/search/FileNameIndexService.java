@@ -4,6 +4,8 @@ import com.asuka.filelist.api.response.SearchPageResponse;
 import com.asuka.filelist.api.response.SearchResultResponse;
 import com.asuka.filelist.application.storage.MountedStorageRegistry;
 import com.asuka.filelist.application.storage.MountedStorageRuntime;
+import com.asuka.filelist.application.storage.ResolvedStoragePath;
+import com.asuka.filelist.application.storage.StorageResolver;
 import com.asuka.filelist.application.task.TaskExecutor;
 import com.asuka.filelist.application.task.TaskProgress;
 import com.asuka.filelist.application.user.PermissionApplicationService;
@@ -31,19 +33,37 @@ import java.util.stream.Collectors;
 @Service
 public class FileNameIndexService {
 
+    /** 同步子树更新用的无操作进度（无取消）。 */
+    private static final TaskProgress NOOP_PROGRESS = new TaskProgress() {
+        @Override
+        public void report(int percent) {
+        }
+
+        @Override
+        public boolean isCanceled() {
+            return false;
+        }
+
+        @Override
+        public void checkCanceled() {
+        }
+    };
+
     private final MountedStorageRegistry registry;
     private final FileIndexNodeMapper nodeMapper;
     private final FileTreeWalker walker;
     private final PermissionApplicationService permissionApplicationService;
+    private final StorageResolver storageResolver;
     private final TaskExecutor taskExecutor;
 
     public FileNameIndexService(MountedStorageRegistry registry, FileIndexNodeMapper nodeMapper,
                                 FileTreeWalker walker, PermissionApplicationService permissionApplicationService,
-                                TaskExecutor taskExecutor) {
+                                StorageResolver storageResolver, TaskExecutor taskExecutor) {
         this.registry = registry;
         this.nodeMapper = nodeMapper;
         this.walker = walker;
         this.permissionApplicationService = permissionApplicationService;
+        this.storageResolver = storageResolver;
         this.taskExecutor = taskExecutor;
     }
 
@@ -111,6 +131,77 @@ public class FileNameIndexService {
                     Boolean.TRUE.equals(node.getIsDir()), node.getSize() == null ? 0L : node.getSize()));
         }
         return new SearchPageResponse(items, result.getTotal(), page, perPage);
+    }
+
+    /**
+     * 增量：新建/更新一个索引节点（按唯一键先删后插，幂等）。根不入索引。
+     */
+    public void upsertNode(Long storageId, String actualPath, boolean isDir, long size) {
+        String name = lastSegment(actualPath);
+        if (name.isEmpty()) {
+            return;
+        }
+        String parent = parentOf(actualPath);
+        nodeMapper.delete(new LambdaQueryWrapper<FileIndexNodeEntity>()
+                .eq(FileIndexNodeEntity::getStorageId, storageId)
+                .eq(FileIndexNodeEntity::getParent, parent)
+                .eq(FileIndexNodeEntity::getName, name));
+        FileIndexNodeEntity entity = new FileIndexNodeEntity();
+        entity.setParent(parent);
+        entity.setName(name);
+        entity.setIsDir(isDir);
+        entity.setSize(size);
+        entity.setStorageId(storageId);
+        nodeMapper.insert(entity);
+    }
+
+    /**
+     * 增量：删除一个节点，目录则连带删除其子树。
+     */
+    public void removeNode(Long storageId, String actualPath) {
+        String name = lastSegment(actualPath);
+        if (name.isEmpty()) {
+            return;
+        }
+        nodeMapper.delete(new LambdaQueryWrapper<FileIndexNodeEntity>()
+                .eq(FileIndexNodeEntity::getStorageId, storageId)
+                .eq(FileIndexNodeEntity::getParent, parentOf(actualPath))
+                .eq(FileIndexNodeEntity::getName, name));
+        deleteDescendants(storageId, actualPath);
+    }
+
+    /**
+     * 同步重建指定路径子树的索引（/api/admin/index/update）。
+     */
+    public void updateSubtree(CurrentUser user, String path) {
+        String internal = PathUtils.joinBasePath(user.basePath(), path);
+        ResolvedStoragePath resolved = storageResolver.resolve(internal);
+        Long storageId = resolved.runtime().storage().id();
+        String actualPath = resolved.actualPath();
+        deleteDescendants(storageId, actualPath);
+        List<FileIndexNodeEntity> nodes = new ArrayList<>();
+        walker.walkSubtree(resolved.runtime(), actualPath, object -> nodes.add(toNode(object, storageId)), NOOP_PROGRESS);
+        nodes.forEach(nodeMapper::insert);
+    }
+
+    /**
+     * 删除某 actualPath 目录下的全部后代节点。
+     */
+    private void deleteDescendants(Long storageId, String actualPath) {
+        String clean = PathUtils.fixAndCleanPath(actualPath);
+        nodeMapper.delete(new LambdaQueryWrapper<FileIndexNodeEntity>()
+                .eq(FileIndexNodeEntity::getStorageId, storageId)
+                .and(wrapper -> wrapper
+                        .eq(FileIndexNodeEntity::getParent, clean)
+                        .or().likeRight(FileIndexNodeEntity::getParent, clean.equals("/") ? "/" : clean + "/")));
+    }
+
+    /**
+     * 取 actualPath 最后一段；根返回空串。
+     */
+    private String lastSegment(String actualPath) {
+        String clean = PathUtils.fixAndCleanPath(actualPath);
+        return "/".equals(clean) ? "" : clean.substring(clean.lastIndexOf('/') + 1);
     }
 
     /**
