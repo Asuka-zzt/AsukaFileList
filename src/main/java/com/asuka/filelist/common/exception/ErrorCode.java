@@ -11,6 +11,7 @@ public enum ErrorCode {
     STORAGE_NOT_FOUND("STORAGE_NOT_FOUND", "Storage not found", HttpStatus.NOT_FOUND),
     OBJECT_NOT_FOUND("OBJECT_NOT_FOUND", "Object not found", HttpStatus.NOT_FOUND),
     DRIVER_NOT_SUPPORTED("DRIVER_NOT_SUPPORTED", "Driver operation is not supported", HttpStatus.METHOD_NOT_ALLOWED),
+    DRIVER_REMOTE_ERROR("DRIVER_REMOTE_ERROR", "Remote driver request failed", HttpStatus.BAD_GATEWAY),
     TASK_NOT_FOUND("TASK_NOT_FOUND", "Task not found", HttpStatus.NOT_FOUND),
     SHARE_NOT_FOUND("SHARE_NOT_FOUND", "Share not found", HttpStatus.NOT_FOUND),
     SHARE_EXPIRED("SHARE_EXPIRED", "Share has expired", HttpStatus.GONE),
