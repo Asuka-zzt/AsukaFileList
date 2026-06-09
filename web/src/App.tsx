@@ -9,6 +9,8 @@ import Login from './pages/Login'
 import FileBrowser from './pages/FileBrowser'
 import Search from './pages/Search'
 import Tasks from './pages/Tasks'
+import Shares from './pages/Shares'
+import PublicShare from './pages/PublicShare'
 import AdminStorages from './pages/admin/Storages'
 
 // Simple protected route wrapper
@@ -64,6 +66,9 @@ function MainLayout({ children }: { children: React.ReactNode }) {
           </Link>
           <Link to="/tasks" className={`block px-3 py-2 rounded hover:bg-gray-100 mt-1 ${location.pathname === '/tasks' ? 'bg-blue-50 text-primary font-medium' : ''}`}>
             📋 任务中心
+          </Link>
+          <Link to="/shares" className={`block px-3 py-2 rounded hover:bg-gray-100 mt-1 ${location.pathname === '/shares' ? 'bg-blue-50 text-primary font-medium' : ''}`}>
+            🔗 我的分享
           </Link>
           {user?.admin && (
             <Link to="/admin/storages" className={`block px-3 py-2 rounded hover:bg-gray-100 mt-1 ${isAdminPath ? 'bg-blue-50 text-primary font-medium' : ''}`}>
@@ -123,6 +128,9 @@ function App() {
     <Routes>
       <Route path="/login" element={<Login />} />
 
+      {/* 公开分享页：免登录、无主框架 */}
+      <Route path="/s/:shareId" element={<PublicShare />} />
+
       <Route
         path="/"
         element={
@@ -151,6 +159,17 @@ function App() {
           <ProtectedRoute>
             <MainLayout>
               <Tasks />
+            </MainLayout>
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/shares"
+        element={
+          <ProtectedRoute>
+            <MainLayout>
+              <Shares />
             </MainLayout>
           </ProtectedRoute>
         }

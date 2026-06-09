@@ -38,6 +38,8 @@ asuka:
   download:
     sign-ttl-seconds: 14400
     sign-all: false
+  share:
+    token-ttl-seconds: 7200
   bootstrap:
     admin-username: admin
     admin-password: test-admin-password

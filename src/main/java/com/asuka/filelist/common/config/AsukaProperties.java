@@ -15,7 +15,8 @@ public record AsukaProperties(
         Storage storage,
         Upload upload,
         Bootstrap bootstrap,
-        Download download
+        Download download,
+        Share share
 ) {
 
     public record Jwt(
@@ -58,6 +59,12 @@ public record AsukaProperties(
             long signTtlSeconds,
             // 是否对所有文件强制签名（默认 false，仅密码目录需签名）
             boolean signAll
+    ) {
+    }
+
+    public record Share(
+            // 分享访问令牌（shareToken）有效期秒数，密码校验后签发（M7）
+            long tokenTtlSeconds
     ) {
     }
 
