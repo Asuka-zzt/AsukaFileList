@@ -65,6 +65,9 @@ asuka:
     sign-ttl-seconds: ${DOWNLOAD_SIGN_TTL:14400}
     # 是否对所有文件强制签名；默认仅密码目录需要签名
     sign-all: ${DOWNLOAD_SIGN_ALL:false}
+  share:
+    # 分享访问令牌有效期秒数，密码校验后签发；默认 2 小时
+    token-ttl-seconds: ${SHARE_TOKEN_TTL:7200}
   bootstrap:
     admin-username: ${ASUKA_ADMIN_USERNAME:admin}
     admin-password: ${ASUKA_ADMIN_PASSWORD:}
