@@ -7,6 +7,8 @@ import { toast } from 'sonner'
 // Pages
 import Login from './pages/Login'
 import FileBrowser from './pages/FileBrowser'
+import Search from './pages/Search'
+import Tasks from './pages/Tasks'
 import AdminStorages from './pages/admin/Storages'
 
 // Simple protected route wrapper
@@ -54,8 +56,14 @@ function MainLayout({ children }: { children: React.ReactNode }) {
           AsukaFileList
         </div>
         <div className="p-2 text-sm">
-          <Link to="/" className={`block px-3 py-2 rounded hover:bg-gray-100 ${!isAdminPath ? 'bg-blue-50 text-primary font-medium' : ''}`}>
+          <Link to="/" className={`block px-3 py-2 rounded hover:bg-gray-100 ${location.pathname === '/' ? 'bg-blue-50 text-primary font-medium' : ''}`}>
             📁 文件浏览
+          </Link>
+          <Link to="/search" className={`block px-3 py-2 rounded hover:bg-gray-100 mt-1 ${location.pathname === '/search' ? 'bg-blue-50 text-primary font-medium' : ''}`}>
+            🔍 文件搜索
+          </Link>
+          <Link to="/tasks" className={`block px-3 py-2 rounded hover:bg-gray-100 mt-1 ${location.pathname === '/tasks' ? 'bg-blue-50 text-primary font-medium' : ''}`}>
+            📋 任务中心
           </Link>
           {user?.admin && (
             <Link to="/admin/storages" className={`block px-3 py-2 rounded hover:bg-gray-100 mt-1 ${isAdminPath ? 'bg-blue-50 text-primary font-medium' : ''}`}>
@@ -121,6 +129,28 @@ function App() {
           <ProtectedRoute>
             <MainLayout>
               <FileBrowser />
+            </MainLayout>
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/search"
+        element={
+          <ProtectedRoute>
+            <MainLayout>
+              <Search />
+            </MainLayout>
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/tasks"
+        element={
+          <ProtectedRoute>
+            <MainLayout>
+              <Tasks />
             </MainLayout>
           </ProtectedRoute>
         }

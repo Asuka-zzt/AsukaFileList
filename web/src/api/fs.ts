@@ -62,6 +62,26 @@ export async function getFile(path: string): Promise<FileObject> {
   return data.data;
 }
 
+export interface SearchResult {
+  path: string;
+  name: string;
+  isDir: boolean;
+  size: number;
+}
+
+export interface SearchPage {
+  content: SearchResult[];
+  total: number;
+  page: number;
+  perPage: number;
+}
+
+// M6: 文件名搜索（按权限与 basePath 过滤后分页）
+export async function searchFiles(keyword: string, page = 1, perPage = 50): Promise<SearchPage> {
+  const { data } = await api.post('/api/fs/search', { keyword, page, perPage });
+  return data.data;
+}
+
 export async function makeDir(path: string): Promise<FileObject> {
   const { data } = await api.post('/api/fs/mkdir', { path });
   return data.data;
