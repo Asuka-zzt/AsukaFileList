@@ -99,5 +99,6 @@ CREATE TABLE IF NOT EXISTS file_index_nodes (
     name       VARCHAR(255) NOT NULL,
     is_dir     BOOLEAN      NOT NULL DEFAULT FALSE,
     size       BIGINT       NOT NULL DEFAULT 0,
-    storage_id BIGINT       NOT NULL
+    storage_id BIGINT       NOT NULL,
+    CONSTRAINT uk_fin_storage_parent_name UNIQUE (storage_id, parent, name)
 );
