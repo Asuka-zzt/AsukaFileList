@@ -14,6 +14,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.hamcrest.Matchers.hasItems;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -45,7 +46,7 @@ class AdminStorageControllerTest {
 
         mockMvc.perform(get("/api/admin/driver/list").header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data[0].name").value("Local"));
+                .andExpect(jsonPath("$.data[*].name").value(hasItems("Local", "S3", "BaiduNetdisk")));
 
         long storageId = createStorage(token, "/m3-local", tempDir);
 

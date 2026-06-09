@@ -18,6 +18,11 @@ export default defineConfig({
         target: 'http://localhost:8080',
         changeOrigin: true,
       },
+      // Proxy share download endpoint (/sd/**) for the public share page.
+      '/sd': {
+        target: 'http://localhost:8080',
+        changeOrigin: true,
+      },
     },
   },
 })

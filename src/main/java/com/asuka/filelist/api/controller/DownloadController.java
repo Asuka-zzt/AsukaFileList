@@ -22,10 +22,14 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.URI;
 import java.net.URLEncoder;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.time.Duration;
 import java.util.Map;
 
 /**
@@ -43,6 +47,10 @@ public class DownloadController {
     private final MetaApplicationService metaApplicationService;
     private final DownloadSignService downloadSignService;
     private final ShareApplicationService shareApplicationService;
+    private final HttpClient proxyHttpClient = HttpClient.newBuilder()
+            .connectTimeout(Duration.ofSeconds(15))
+            .followRedirects(HttpClient.Redirect.NORMAL)
+            .build();
 
     public DownloadController(FsApplicationService fsApplicationService,
                               MetaApplicationService metaApplicationService,
@@ -82,16 +90,66 @@ public class DownloadController {
     }
 
     /**
-     * 按驱动链接输出：远程非 file 协议重定向，本地 file 协议走分段流。
+     * 按驱动链接输出：
+     * <ul>
+     *   <li>本地 file 协议 → 分段流式回写；</li>
+     *   <li>远程且 link.headers 非空（如百度需 User-Agent）→ 服务端带头代理流式拉取；</li>
+     *   <li>其余远程（如 S3 预签名）→ 302 重定向。</li>
+     * </ul>
      */
     private void serveTarget(FsDownloadTarget target, HttpServletRequest request, HttpServletResponse response) throws IOException {
         URI url = target.link().url();
-        if (url.getScheme() != null && !"file".equalsIgnoreCase(url.getScheme())) {
-            // 远程驱动（M8 引入）直接重定向到驱动链接
-            response.sendRedirect(url.toString());
+        boolean remote = url.getScheme() != null && !"file".equalsIgnoreCase(url.getScheme());
+        if (!remote) {
+            serveLocalFile(Paths.get(url), target.file().name(), request, response);
             return;
         }
-        serveLocalFile(Paths.get(url), target.file().name(), request, response);
+        Map<String, String> headers = target.link().headers();
+        if (headers != null && !headers.isEmpty()) {
+            proxyRemote(url, headers, request, response);
+            return;
+        }
+        response.sendRedirect(url.toString());
+    }
+
+    /**
+     * 带鉴权头代理拉取上游并流式回写，透传 Range 与上游 Content-Range/Length/Type。
+     */
+    void proxyRemote(URI url, Map<String, String> headers,
+                     HttpServletRequest request, HttpServletResponse response) throws IOException {
+        HttpRequest.Builder upstream = HttpRequest.newBuilder(url).GET();
+        headers.forEach(upstream::header);
+        String range = request.getHeader("Range");
+        if (range != null && !range.isBlank()) {
+            upstream.header("Range", range);
+        }
+        try {
+            HttpResponse<InputStream> resp = proxyHttpClient.send(
+                    upstream.build(), HttpResponse.BodyHandlers.ofInputStream());
+            int status = resp.statusCode();
+            if (status / 100 != 2) {
+                throw new BusinessException(ErrorCode.DRIVER_REMOTE_ERROR,
+                        "Upstream download failed with status " + status);
+            }
+            response.setStatus(status);
+            copyHeader(resp, response, "Content-Type");
+            copyHeader(resp, response, "Content-Length");
+            copyHeader(resp, response, "Content-Range");
+            copyHeader(resp, response, "Accept-Ranges");
+            try (InputStream in = resp.body()) {
+                in.transferTo(response.getOutputStream());
+            }
+        } catch (InterruptedException ex) {
+            Thread.currentThread().interrupt();
+            throw new BusinessException(ErrorCode.DRIVER_REMOTE_ERROR, "Upstream download interrupted");
+        }
+    }
+
+    /**
+     * 透传上游响应头到下游（存在时）。
+     */
+    private void copyHeader(HttpResponse<?> upstream, HttpServletResponse response, String name) {
+        upstream.headers().firstValue(name).ifPresent(value -> response.setHeader(name, value));
     }
 
     /**
