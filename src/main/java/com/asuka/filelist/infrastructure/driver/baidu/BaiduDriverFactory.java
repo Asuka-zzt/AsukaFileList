@@ -41,7 +41,7 @@ public class BaiduDriverFactory implements StorageDriverFactory {
      */
     @Override
     public DriverInfo info() {
-        DriverConfig config = new DriverConfig(DRIVER_NAME, false, false, true, false, true, "/", true);
+        DriverConfig config = new DriverConfig(DRIVER_NAME, false, false, true, false, false, "/", true);
         List<DriverItem> items = List.of(
                 new DriverItem("refreshToken", "Refresh token", "string", true, "", "OAuth refresh_token (long-lived)"),
                 new DriverItem("clientId", "Client id", "string", true, "", "App key"),
