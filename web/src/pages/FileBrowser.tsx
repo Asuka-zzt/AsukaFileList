@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import type { FileObject } from '../api/fs'
 import type { ApiError } from '../api/client'
 import {
@@ -21,6 +21,7 @@ export default function FileBrowser() {
   const [passwords, setPasswords] = useState<Record<string, string>>({})
   const [passwordInput, setPasswordInput] = useState('')
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const queryClient = useQueryClient()
 
   const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['fs-list', currentPath, refreshKey, passwords[currentPath] || ''],
@@ -49,6 +50,8 @@ export default function FileBrowser() {
     try {
       await fn()
       reload()
+      // 写操作会异步改动文件名索引，让搜索结果在下次进入时刷新
+      queryClient.invalidateQueries({ queryKey: ['fs-search'] })
     } catch (e) {
       setMessage(`${label}失败：${e instanceof Error ? e.message : String(e)}`)
     } finally {

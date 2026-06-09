@@ -9,15 +9,19 @@ export default function Search() {
   const [input, setInput] = useState('')
   const [keyword, setKeyword] = useState('')
   const [page, setPage] = useState(1)
+  // nonce 保证即使关键字不变，每次点击搜索也强制重新拉取（索引可能已变化）
+  const [nonce, setNonce] = useState(0)
 
-  const { data, isLoading, isError, error } = useQuery({
-    queryKey: ['fs-search', keyword, page],
+  const { data, isLoading, isFetching, isError, error } = useQuery({
+    queryKey: ['fs-search', keyword, page, nonce],
     queryFn: () => searchFiles(keyword, page, PER_PAGE),
     enabled: keyword.trim().length > 0,
+    staleTime: 0,
   })
 
   const submit = () => {
     setPage(1)
+    setNonce((n) => n + 1)
     setKeyword(input.trim())
   }
 
@@ -38,7 +42,7 @@ export default function Search() {
           placeholder="输入文件名关键字"
           className="flex-1 max-w-md text-sm px-3 py-2 border rounded"
         />
-        <button onClick={submit} className="flex items-center gap-1 text-sm px-3 py-2 border rounded bg-primary text-white hover:opacity-90">
+        <button onClick={submit} disabled={isFetching} className="flex items-center gap-1 text-sm px-3 py-2 border rounded bg-primary text-white hover:opacity-90 disabled:opacity-60">
           <SearchIcon className="w-4 h-4" /> 搜索
         </button>
       </div>
