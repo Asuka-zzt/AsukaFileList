@@ -3,6 +3,7 @@ package com.asuka.filelist.api.controller;
 import com.asuka.filelist.application.fs.FsApplicationService;
 import com.asuka.filelist.application.fs.FsDownloadTarget;
 import com.asuka.filelist.application.meta.MetaApplicationService;
+import com.asuka.filelist.application.share.ShareApplicationService;
 import com.asuka.filelist.common.exception.BusinessException;
 import com.asuka.filelist.common.exception.ErrorCode;
 import com.asuka.filelist.common.path.PathUtils;
@@ -35,18 +36,22 @@ import java.util.Map;
 public class DownloadController {
 
     private static final String DOWNLOAD_PREFIX = "/d";
+    private static final String SHARE_PREFIX = "/sd";
     private static final int BUFFER_SIZE = 8192;
 
     private final FsApplicationService fsApplicationService;
     private final MetaApplicationService metaApplicationService;
     private final DownloadSignService downloadSignService;
+    private final ShareApplicationService shareApplicationService;
 
     public DownloadController(FsApplicationService fsApplicationService,
                               MetaApplicationService metaApplicationService,
-                              DownloadSignService downloadSignService) {
+                              DownloadSignService downloadSignService,
+                              ShareApplicationService shareApplicationService) {
         this.fsApplicationService = fsApplicationService;
         this.metaApplicationService = metaApplicationService;
         this.downloadSignService = downloadSignService;
+        this.shareApplicationService = shareApplicationService;
     }
 
     /**
@@ -58,14 +63,44 @@ public class DownloadController {
         enforceSign(currentUser, path, request.getParameter("sign"));
         LinkArgs args = new LinkArgs(request.getRemoteAddr(), Map.of(), "", false);
         FsDownloadTarget target = fsApplicationService.link(currentUser, path, args);
+        serveTarget(target, request, response);
+    }
 
+    /**
+     * M7: 分享下载 /sd/{shareId}/**，凭 ?token= 校验后输出，免登录。
+     */
+    @GetMapping("/sd/{shareId}/**")
+    public void shareDownload(HttpServletRequest request, HttpServletResponse response) throws IOException {
+        String tail = extractShareTail(request);
+        int slash = tail.indexOf('/');
+        String shareId = slash < 0 ? tail : tail.substring(0, slash);
+        String subPath = slash < 0 ? "/" : tail.substring(slash);
+        LinkArgs args = new LinkArgs(request.getRemoteAddr(), Map.of(), "", false);
+        FsDownloadTarget target = shareApplicationService.linkPublic(
+                shareId, request.getParameter("token"), subPath, args);
+        serveTarget(target, request, response);
+    }
+
+    /**
+     * 按驱动链接输出：远程非 file 协议重定向，本地 file 协议走分段流。
+     */
+    private void serveTarget(FsDownloadTarget target, HttpServletRequest request, HttpServletResponse response) throws IOException {
         URI url = target.link().url();
         if (url.getScheme() != null && !"file".equalsIgnoreCase(url.getScheme())) {
-            // 远程驱动（M9 引入）直接重定向到驱动链接
+            // 远程驱动（M8 引入）直接重定向到驱动链接
             response.sendRedirect(url.toString());
             return;
         }
         serveLocalFile(Paths.get(url), target.file().name(), request, response);
+    }
+
+    /**
+     * 提取 /sd 之后的 {shareId}/子路径 并解码。
+     */
+    private String extractShareTail(HttpServletRequest request) {
+        String uri = request.getRequestURI();
+        String encoded = uri.length() > SHARE_PREFIX.length() + 1 ? uri.substring(SHARE_PREFIX.length() + 1) : "";
+        return UriUtils.decode(encoded, StandardCharsets.UTF_8);
     }
 
     /**

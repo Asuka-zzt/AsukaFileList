@@ -48,6 +48,8 @@ public class AuthenticationInterceptor implements HandlerInterceptor {
         return "OPTIONS".equalsIgnoreCase(request.getMethod())
                 || "/api/auth/login".equals(path)
                 || "/api/health".equals(path)
+                || path.startsWith("/api/public/share/")
+                || path.startsWith("/sd/")
                 || path.startsWith("/actuator")
                 || "/error".equals(path);
     }
