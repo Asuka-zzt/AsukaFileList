@@ -62,15 +62,16 @@ public class BaiduTokenManager {
             HttpResponse<String> resp = httpClient.send(
                     HttpRequest.newBuilder(URI.create(url)).GET().build(),
                     HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+            String body = resp.body();
             if (resp.statusCode() / 100 != 2) {
                 throw new BusinessException(ErrorCode.BAD_REQUEST,
-                        "Baidu token refresh failed with status " + resp.statusCode());
+                        "Baidu token refresh failed (HTTP " + resp.statusCode() + "): " + describe(body));
             }
-            JsonNode node = objectMapper.readTree(resp.body());
+            JsonNode node = objectMapper.readTree(body);
             JsonNode token = node.get("access_token");
             if (token == null || token.asText().isBlank()) {
                 throw new BusinessException(ErrorCode.BAD_REQUEST,
-                        "Baidu token refresh returned no access_token");
+                        "Baidu token refresh returned no access_token: " + describe(body));
             }
             long expiresIn = node.path("expires_in").asLong(3600);
             this.cachedToken = token.asText();
@@ -84,5 +85,26 @@ public class BaiduTokenManager {
 
     private String encode(String value) {
         return URLEncoder.encode(value == null ? "" : value, StandardCharsets.UTF_8);
+    }
+
+    /**
+     * 提取 Baidu OAuth 错误信息（error/error_description），便于定位失败原因；
+     * 缺失时回退截断的原始响应体。不回显凭据本身。
+     */
+    private String describe(String body) {
+        if (body == null || body.isBlank()) {
+            return "(empty body)";
+        }
+        try {
+            JsonNode node = objectMapper.readTree(body);
+            String error = node.path("error").asText("");
+            String description = node.path("error_description").asText("");
+            if (!error.isBlank() || !description.isBlank()) {
+                return error + (description.isBlank() ? "" : " - " + description);
+            }
+        } catch (Exception ignored) {
+            // 非 JSON 响应，回退原始体
+        }
+        return body.length() > 300 ? body.substring(0, 300) : body;
     }
 }
