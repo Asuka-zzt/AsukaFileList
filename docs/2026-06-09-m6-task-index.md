@@ -1,7 +1,7 @@
 # M6 任务中心与文件名索引设计
 
-> 状态：待批准。批准后再进入编码。
-> 分支：`feat(task)/m6-task-index`（实现阶段从 M5 基线切出）。
+> 状态：已实现并测试通过。
+> 分支：`feat(task)/m6-task-index`（从 M5 基线切出）。
 
 ## 1. 解决的问题
 
@@ -167,13 +167,20 @@ FsApplicationService.put/mkdir/rename/move/copy/remove
 - **风险**：大目录全量 build 耗时/内存——分批 insert + 进度回报缓解；超大存储后续可加分页遍历。
 - **后续**：搜索接入 M5 隐藏过滤、索引接入 M9 AI 索引触发、任务重试策略。
 
-## 8. 测试（实现后回填）
+## 8. 测试（已完成）
+
+实现拆为 4 个提交批次：任务框架 → 索引/搜索 → 增量索引 → 前端/文档。
 
 | 类型 | 测试 | 位置 |
 | --- | --- | --- |
-| 单元 | 任务状态流转 / 取消 / 进度节流 | `TaskExecutorTest` |
-| 单元 | FileTreeWalker 遍历、search 分页与 basePath 过滤 | `FileNameIndexServiceTest` |
-| 集成 | build→search 闭环、非 admin build 403、所有权 403 | `TaskIndexControllerTest` |
-| 集成 | 上传/删除/重命名后增量索引生效 | `TaskIndexControllerTest` |
+| 集成 | 任务流转 SUCCESS、失败记错、协作式取消、列表/详情/所有权 403、终态取消 400 | `TaskFrameworkTest` |
+| 集成 | build（异步任务）→ search 闭环、`.txt` 多命中、非 admin build 403、basePath 边界 | `TaskIndexControllerTest` |
+| 集成 | 上传/删除/重命名经异步事件增量维护索引；`/index/update` 重建子树（含绕过 API 落盘文件）| `IncrementalIndexTest` |
 
-验收标准：`/api/admin/index/build` 异步执行且可查进度；`/api/fs/search` 按文件名分页返回且仅含有权限项；写操作后增量索引生效；`mvn test` 全绿；前端任务面板与搜索页可用。
+执行结果：`mvn test` 全绿（56 个，较 M5 +8）；`npm --prefix web run build` 通过。
+
+> 测试隔离注意：多个 `@SpringBootTest` 共享同一 H2 实例，写操作会经增量事件向 `file_index_nodes` 落数据，故搜索类断言使用全局唯一关键字（如 `qq6`/`ww6`）避免跨类污染。
+
+后续可补：纯单元的 `FileTreeWalker`/进度节流测试、并发任务压力测试。
+
+验收标准（已达成）：`/api/admin/index/build` 异步执行且可查进度；`/api/fs/search` 按文件名分页且仅含有权限项、受 basePath 边界约束；写操作后增量索引生效；`mvn test` 全绿；前端任务面板（进度/取消/重建）与搜索页可用。

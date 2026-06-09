@@ -182,7 +182,10 @@ mvn compile -q
 | `POST /api/fs/get` `dirs` `mkdir` `rename` `move` `copy` `remove` | 文件读写操作 |
 | `PUT  /api/fs/put` | 流式上传 |
 | `GET  /d/**?sign=` | 文件下载（Range；密码目录需签名） |
+| `POST /api/fs/search` | 文件名搜索（按权限/basePath 过滤，分页） |
+| `GET  /api/task/list` `{id}` `{id}/cancel` | 任务中心（查询/详情/取消） |
 | `GET/POST /api/admin/meta/*` | 目录 Meta 规则管理（list/get/create/update/delete） |
+| `POST /api/admin/index/build` `update` | 文件名索引重建（异步任务）/ 子树更新 |
 | `GET/POST /api/admin/storage/*` `driver/*` | 存储与驱动管理 |
 | `GET/POST /api/admin/user/*` `role/*` | 用户与角色管理 |
 
@@ -205,4 +208,5 @@ mvn compile -q
 | M3 | ✅ | 存储挂载与 LocalDriver |
 | M4 | ✅ | 文件系统读写闭环 |
 | M5 | ✅ | 目录 Meta、隐藏规则、README/Header、下载签名 |
-| M6 | 计划中 | 任务中心与文件名索引 |
+| M6 | ✅ | 任务中心（异步/进度/取消）与文件名索引/搜索 |
+| M7 | 计划中 | 分享、预览与公开访问 |
