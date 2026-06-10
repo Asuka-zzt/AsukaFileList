@@ -26,6 +26,9 @@ public class UserEntity {
     /** 权限位，与 AList 对齐（bit 0~16），详见 detailed-design.md §3.1 */
     private Integer permission = 0;
 
+    /** WebDAV Digest 凭据 HA1 = MD5(username:realm:webdavPassword)，null=未设置则禁用 WebDAV 登录 */
+    private String webdavHa1;
+
     @TableField(fill = FieldFill.INSERT)
     private LocalDateTime createdAt;
 
@@ -57,6 +60,9 @@ public class UserEntity {
 
     public Integer getPermission() { return permission; }
     public void setPermission(Integer permission) { this.permission = permission; }
+
+    public String getWebdavHa1() { return webdavHa1; }
+    public void setWebdavHa1(String webdavHa1) { this.webdavHa1 = webdavHa1; }
 
     public LocalDateTime getCreatedAt() { return createdAt; }
     public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }

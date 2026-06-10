@@ -112,6 +112,28 @@ public class UserApplicationService {
     }
 
     /**
+     * 设置/清除用户 WebDAV 凭据 HA1（null 表示清除，禁用 WebDAV 登录）。
+     */
+    @Transactional
+    public void updateWebdavHa1(Long userId, String ha1) {
+        UserEntity entity = userMapper.selectById(userId);
+        if (entity == null) {
+            throw new BusinessException(ErrorCode.OBJECT_NOT_FOUND, "User does not exist");
+        }
+        entity.setWebdavHa1(ha1);
+        userMapper.updateById(entity);
+    }
+
+    /**
+     * 读取用户 WebDAV 凭据 HA1，未设置返回 null。
+     */
+    @Transactional(readOnly = true)
+    public String findWebdavHa1(Long userId) {
+        UserEntity entity = userMapper.selectById(userId);
+        return entity == null ? null : entity.getWebdavHa1();
+    }
+
+    /**
      * 更新用户密码并刷新密码时间戳。
      */
     @Transactional

@@ -10,6 +10,7 @@ CREATE TABLE IF NOT EXISTS users (
     base_path     VARCHAR(500) NOT NULL DEFAULT '/',
     disabled      BOOLEAN      NOT NULL DEFAULT FALSE,
     permission    INT          NOT NULL DEFAULT 0,
+    webdav_ha1    VARCHAR(64),
     created_at    DATETIME,
     updated_at    DATETIME
 );
