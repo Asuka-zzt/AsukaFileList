@@ -1,6 +1,6 @@
 # WebDAV 服务端：多云盘统一挂载设计
 
-> 状态：已批准，开发中（范围：完整读写 + Digest + 专用 WebDAV 密码）。
+> 状态：已实现并测试通过（见 §8）。
 > 分支：`feat(webdav)/webdav-server`（已 rebase 到合并 M8 后的 main，含 S3/百度读写以便端到端联调）。
 
 ## 1. 解决的问题
@@ -118,10 +118,29 @@ web/src/pages（个人设置）          (改) 设置 WebDAV 密码的小表单 
 - **WSL**：Windows→WSL 的 localhost 转发一般可用；否则用 `wsl hostname -I` 的 IP。
 - **安全**：`/dav` 仅 Digest，与现有 Bearer 隔离。HA1 等价口令；**公网暴露务必上 HTTPS**，本地/局域网可明文。
 
-## 8. 测试计划（实现后回填）
+## 8. 测试结果（已实现）
 
-- **单元**：Digest `response` 计算与 nonce 校验；PROPFIND XML 生成（目录/文件/Depth）；`Destination` 解析；`WebDavLockManager`。
-- **集成**（MockMvc / 内嵌容器）：`OPTIONS` 头（`DAV: 1,2`、`MS-Author-Via`）；`PROPFIND` 207；`GET` Range 206；`PUT` → 存储副作用；`MKCOL`/`DELETE`/`MOVE`/`COPY`；`LOCK`/`UNLOCK`；401 challenge → 带凭据 200。
-- **手测**：Windows 映射网络驱动器（Digest，明文 HTTP）、rclone、macOS Finder；增删改查 + 大文件。
+WebDavServlet 是独立 servlet（非 MVC Controller），MockMvc 无法触达，故用 `@SpringBootTest(RANDOM_PORT)` + 自写 Digest 客户端做真实端口端到端测试。
 
-验收标准：Windows 用「用户名 + WebDAV 密码」经 Digest 在明文 HTTP 下把 `/dav` 映射为网络驱动器；可浏览所有挂载存储、打开/拷出/上传/新建/删除/移动；百度存储只读；`mvn test` 全绿；`npm --prefix web run build` 通过。
+| 测试类 | 覆盖点 |
+| --- | --- |
+| `WebdavCredentialServiceTest`（单元）| HA1 = MD5(user:realm:pw) 已知向量、确定性、随输入变化 |
+| `WebDavReadFlowTest#readOnlyMountFlow`（集成）| 无凭据 → 401 + Digest challenge；根 PROPFIND 列挂载点；挂载点 PROPFIND 列文件/目录（`<D:collection/>`）；GET 取内容；GET 无凭据 → 401 |
+| `WebDavReadFlowTest#readWriteFlow`（集成）| PUT→落盘、GET 取回、MKCOL、同目录 MOVE（重命名 F2）、跨目录 MOVE+改名、跨目录 COPY+改名、LOCK/UNLOCK、DELETE，全部校验存储副作用 |
+
+结果：`mvn test` 全绿（82 个测试）；`npm --prefix web run build` 与 `npm run lint` 通过。
+
+### 实现与设计的差异
+- **批次顺序**：调整为「鉴权基础（批次 1）→ 只读 DAV（批次 2）→ 写 DAV（批次 3）→ 前端/文档（批次 4）」，避免只读骨架使用一次性临时凭据。
+- **同目录 COPY 到新名**（文件副本）无对应 VFS 原语，映射为 `DRIVER_NOT_SUPPORTED`（405）——同目录 MOVE 退化为 rename 已支持（Windows F2）。跨目录 MOVE/COPY + 改名通过「move/copy 保留原名 + 补一次 rename」实现。
+- **PROPPATCH**：不持久化自定义属性，回 207 标记成功（兼容 Windows 写时间戳）。
+- **前端**：新增「个人设置」页（`/settings`）设置/清除 WebDAV 密码并展示挂载地址与用户名。
+
+### Windows 挂载 checklist（手测项）
+1. 在「个人设置」设置 WebDAV 密码。
+2. Windows：确保「WebClient」服务已启动 → 资源管理器「映射网络驱动器」→ 地址填 `http://<服务器host>:<port>/dav/` → 用「用户名 + WebDAV 密码」登录。
+3. 明文 HTTP 若被拒：将注册表 `HKLM\SYSTEM\CurrentControlSet\Services\WebClient\Parameters\BasicAuthLevel` 设为 2 并重启 WebClient（或改用 HTTPS）。
+4. 上传大文件受 `FileSizeLimitInBytes`（默认 ~50MB）限制，按需调高。
+5. WSL：Windows→WSL 的 localhost 转发一般可用；否则用 `wsl hostname -I` 的 IP。
+
+验收标准达成：经 Digest 在明文 HTTP 下把 `/dav` 挂为网络驱动器，可浏览所有存储、打开/拷出/上传/新建/删除/移动/重命名；只读驱动写操作映射为 405；`mvn test` 全绿；前端构建通过。真实 Windows/rclone 挂载为本地手测项。

@@ -28,9 +28,10 @@ AsukaFileList 需要从当前 Java Spring Boot 脚手架逐步演进为完整的
 | M5 Meta/隐藏/下载签名 | ✅ 已完成 | AdminMeta + 目录密码/隐藏/README/Header + HMAC 下载签名 + 前端密码框/README |
 | M6 任务中心/文件名索引 | ✅ 已完成 | 进程内异步任务（进度/取消）+ 文件名索引/搜索 + 写操作增量索引 + 前端任务面板/搜索页 |
 | M7 分享与公开访问 | ✅ 已完成 | 分享 CRUD + 公开 info/auth/list/get + `/sd/{shareId}/**` 下载（密码/过期/访问次数/阅后即焚/禁下载/路径夹紧）+ 前端分享管理页与公开分享页 |
-| M8 协议兼容与更多驱动 | ✅ 已完成（本轮裁剪为两个远程驱动）| AWS S3 驱动（读写，预签名 302 下载）+ 百度网盘只读驱动（list/get/link，服务端带 UA 代理下载）；WebDAV/S3 服务端协议与百度写延后 |
+| M8 协议兼容与更多驱动 | ✅ 已完成 | AWS S3 驱动（读写，预签名 302 下载）+ 百度网盘驱动（读写，下载经服务端 UA 代理，token 轮换回写）|
+| WebDAV 服务端 | ✅ 已完成 | `/dav/*` 独立 servlet + Digest（专用 WebDAV 密码，HA1）+ OPTIONS/PROPFIND/GET/PUT/MKCOL/DELETE/MOVE/COPY/LOCK；复用统一 VFS，把全部存储挂到 Windows/macOS/rclone（见 `docs/2026-06-09-webdav-server.md`）|
 
-> README 的"开发阶段"表已随 M8 更新至 M0–M8 ✅。M8 本轮仅落地 S3 与百度两个驱动（见 `docs/2026-06-09-m8-s3-baidu.md` §1 裁剪说明）。
+> README 的"开发阶段"表已随 WebDAV 更新至 M0–M8 + WebDAV ✅。S3/S3 服务端协议（作为协议而非驱动）与百度分享等仍可后续扩展。
 
 ### 两条修订原则
 
@@ -721,7 +722,7 @@ docker compose up -d mysql postgres redis
 
 ## 下一步建议
 
-M0–M8 已完成（见上方"进度对账"）。**下一阶段为 M9（最后）Python AI 集成**：语义搜索与 RAG 流式问答代理。M8 本轮已落地 AWS S3（读写、预签名 302）与百度网盘（只读、带 UA 代理下载）；后续可在 M8 框架上补齐 WebDAV/S3 服务端协议、百度写（分片上传）与更多网盘驱动。
+M0–M8 与 WebDAV 服务端均已完成（见上方"进度对账"）。**下一阶段为 M9（最后）Python AI 集成**：语义搜索与 RAG 流式问答代理。可选后续扩展：S3 服务端协议、更多网盘驱动、WebDAV 真排他锁与同目录文件副本。
 
 M4 设计见 `docs/2026-06-07-m4-readwrite.md`，M5 见 `docs/2026-06-08-m5-meta-sign.md`，M6 见 `docs/2026-06-09-m6-task-index.md`，M7 见 `docs/2026-06-09-m7-share.md`，M8 见 `docs/2026-06-09-m8-s3-baidu.md`，均按"先设计、批准后编码"的工作流推进。AI 集成（原 M7）按本次修订延后至最后一个里程碑 M9。
 

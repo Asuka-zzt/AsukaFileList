@@ -11,6 +11,7 @@ import Search from './pages/Search'
 import Tasks from './pages/Tasks'
 import Shares from './pages/Shares'
 import PublicShare from './pages/PublicShare'
+import Settings from './pages/Settings'
 import AdminStorages from './pages/admin/Storages'
 
 // Simple protected route wrapper
@@ -69,6 +70,9 @@ function MainLayout({ children }: { children: React.ReactNode }) {
           </Link>
           <Link to="/shares" className={`block px-3 py-2 rounded hover:bg-gray-100 mt-1 ${location.pathname === '/shares' ? 'bg-blue-50 text-primary font-medium' : ''}`}>
             🔗 我的分享
+          </Link>
+          <Link to="/settings" className={`block px-3 py-2 rounded hover:bg-gray-100 mt-1 ${location.pathname === '/settings' ? 'bg-blue-50 text-primary font-medium' : ''}`}>
+            ⚙️ 个人设置
           </Link>
           {user?.admin && (
             <Link to="/admin/storages" className={`block px-3 py-2 rounded hover:bg-gray-100 mt-1 ${isAdminPath ? 'bg-blue-50 text-primary font-medium' : ''}`}>
@@ -170,6 +174,17 @@ function App() {
           <ProtectedRoute>
             <MainLayout>
               <Shares />
+            </MainLayout>
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/settings"
+        element={
+          <ProtectedRoute>
+            <MainLayout>
+              <Settings />
             </MainLayout>
           </ProtectedRoute>
         }
