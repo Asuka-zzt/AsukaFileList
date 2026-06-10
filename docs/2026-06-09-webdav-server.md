@@ -1,7 +1,7 @@
 # WebDAV 服务端：多云盘统一挂载设计
 
-> 状态：设计稿（待批准后实现）。
-> 分支：`feat(webdav)/webdav-server`（从 M8 基线切出，已含 S3/百度驱动以便端到端联调）。
+> 状态：已批准，开发中（范围：完整读写 + Digest + 专用 WebDAV 密码）。
+> 分支：`feat(webdav)/webdav-server`（已 rebase 到合并 M8 后的 main，含 S3/百度读写以便端到端联调）。
 
 ## 1. 解决的问题
 
@@ -59,12 +59,17 @@ domain/user + 迁移
 web/src/pages（个人设置）          (改) 设置 WebDAV 密码的小表单 + 挂载地址提示
 ```
 
-## 4. 实现批次
+## 4. 实现批次（实现时微调：鉴权基础先行，避免只读骨架用一次性临时凭据）
 
-- **批次 1 `feat(webdav)`：只读骨架** — Servlet + 注册、Digest 鉴权（先用临时/配置内置凭据联调，避免被迁移阻塞）、`OPTIONS`、`PROPFIND`（Depth 0/1）、`GET`/`HEAD`（代理 + Range）。验收：rclone / Windows 只读挂载，可浏览所有存储并拷出文件。
-- **批次 2 `feat(webdav)`：写能力** — `PUT`/`MKCOL`/`DELETE`/`MOVE`/`COPY` + `LOCK`/`UNLOCK` 假锁；`Destination`/`Overwrite`/`If` 头处理。验收：Windows 资源管理器增删改移。
-- **批次 3 `feat(auth)`：WebDAV 专用密码** — `users.webdav_ha1` 迁移 + `Me` 设置/清除端点 + 前端「个人设置」小表单；Digest 鉴权切到真实用户 HA1。
-- **批次 4 `docs`/`test`** — 回填本文 §8、更新 README/`development-plan`、补 `.env`/Windows 挂载 checklist。
+- **批次 1 `feat(auth)`：WebDAV 凭据基础** — Flyway `users.webdav_ha1` 迁移 + test-schema 同步；`Me` 设置/清除 WebDAV 密码端点（只存 `HA1=MD5(username:realm:password)`，不存明文）；HA1 单测。
+- **批次 2 `feat(webdav)`：只读 DAV** — Servlet + `ServletRegistrationBean` 注册 `/dav/*`；Digest 鉴权（nonce 防重放 + 比对真实 HA1 → `CurrentUser`）；`OPTIONS`（`DAV: 1,2`）、`PROPFIND`（Depth 0/1，207）、`GET`/`HEAD`（本地 Range + 远程代理）。验收：rclone / Windows 只读挂载，可浏览所有存储并拷出文件。
+- **批次 3 `feat(webdav)`：写能力** — `PUT`/`MKCOL`/`DELETE`/`MOVE`/`COPY` + `LOCK`/`UNLOCK` 假锁；`Destination`/`Overwrite`/`If` 头处理。验收：Windows 资源管理器增删改移。
+- **批次 4 `docs`/`test`** — 前端「个人设置」设 WebDAV 密码小表单 + 挂载地址提示；回填本文 §8、更新 README/`development-plan`、补 Windows 挂载 checklist。
+
+### 实现决策（开发期补充）
+- **realm 硬编码为常量 `AsukaFileList`**：HA1 依赖 realm，若做成可配，改 realm 会静默作废所有已存 WebDAV 密码——故固定为常量，不进 `AsukaProperties`（也免去改其测试构造）。
+- **HA1 不污染 `User` 领域记录**：`User` record 被大量 `new User(...)` 引用，故 `webdav_ha1` 仅落在 `UserEntity` + `UserApplicationService` 的专用读写方法，鉴权时按需取，缩小影响面。
+- **nonce HMAC 复用 `jwt.secret`**：与 `ShareTokenService`/`DownloadSignService` 一致，不新增密钥配置。
 
 ## 5. 关键流程
 
