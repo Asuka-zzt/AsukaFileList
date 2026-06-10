@@ -7,3 +7,14 @@ ref
 # Web 前端构建产物与依赖
 web/node_modules/
 web/dist/
+web/.vite/
+
+# Python 缓存
+**/__pycache__/
+
+# 本地 agent 记忆（个人用，不提交）
+memory/
+
+# 本地 coding agent 指令（个人用，不提交）
+AGENTS_LOCAL.md
+.agents-local
