@@ -112,16 +112,15 @@ services:
     # 持久化 HF 模型缓存，避免每次重建容器重新下载 bge-m3
     volumes:
       - hf_cache:/root/.cache/huggingface
-    # GPU 直通（bge-m3 优先用 GPU）。默认注释：本机 Docker 未装 nvidia-container-toolkit，
-    # 启用此段会导致 `up` 报 "could not select device driver"。装好 toolkit 后取消注释即可；
-    # 不启用时 bge-m3 自动走 CPU 降级。
-    # deploy:
-    #   resources:
-    #     reservations:
-    #       devices:
-    #         - driver: nvidia
-    #           count: all
-    #           capabilities: [gpu]
+    # GPU 直通（bge-m3 优先用 GPU）。已装 nvidia-container-toolkit 并配置 docker nvidia 运行时。
+    # 若在无 GPU/toolkit 的机器上部署，注释本段即可走 CPU 降级。
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
     depends_on:
       postgres:
         condition: service_healthy
