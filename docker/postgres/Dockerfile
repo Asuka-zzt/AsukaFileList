@@ -8,13 +8,16 @@ FROM pgvector/pgvector:pg18-trixie AS build
 RUN apt-get update \
     && apt-get install -y --no-install-recommends --no-install-suggests \
        ca-certificates \
-       git \
        bison \
        build-essential \
        flex \
        postgresql-server-dev-18
 
-RUN git clone --depth 1 --branch release/PG18/1.7.0 https://github.com/apache/age.git /usr/src/age \
+# AGE 源码以 vendored tarball 提供（构建容器内无法访问 github.com，故不在容器内 git clone；
+# tarball 由 docker/postgres/fetch-age-src.sh 在宿主机预取，见同目录脚本）
+COPY age-src.tar.gz /tmp/age-src.tar.gz
+RUN mkdir -p /usr/src/age \
+    && tar -xzf /tmp/age-src.tar.gz -C /usr/src/age --strip-components=1 \
     && cd /usr/src/age \
     && make \
     && make install
