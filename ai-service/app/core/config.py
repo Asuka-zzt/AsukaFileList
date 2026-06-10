@@ -17,6 +17,19 @@ class Settings(BaseSettings):
 
     # -------- PostgreSQL + pgvector --------
     postgres_dsn: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/cloud_ai"
+    # LightRAG 的 PG 后端 DSN（asyncpg 原生格式，区别于上方 SQLAlchemy DSN）
+    postgres_age_dsn: str = "postgresql://postgres:postgres@localhost:5432/asuka_ai"
+
+    # -------- Embedding（本地 bge-m3）--------
+    embed_provider: str = "bge-m3"             # 可切换托管 embedding API
+    embed_model: str = "BAAI/bge-m3"           # FlagEmbedding 加载的模型
+
+    # -------- LightRAG / Graph RAG --------
+    lightrag_workspace_prefix: str = "kb_"     # workspace 命名前缀：kb_{kbId}
+
+    # -------- Agent Loop --------
+    agent_max_iters: int = 3                    # 检索-评估迭代上限
+    agent_timeout_s: int = 60                   # 单次问答整体超时（秒）
 
     # -------- Redis / Celery --------
     redis_url: str = "redis://localhost:6379/1"
