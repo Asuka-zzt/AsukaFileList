@@ -21,15 +21,20 @@ services:
       retries: 10
 
   postgres:
-    image: pgvector/pgvector:pg16
+    # pgvector + Apache AGE 自定义镜像（pg18），供 LightRAG 的 KV/向量/图/doc-status 存储
+    image: asuka-postgres-age:latest
+    build:
+      context: ./docker/postgres
+      dockerfile: Dockerfile
     container_name: asuka-postgres
     environment:
       POSTGRES_PASSWORD: ${PG_PASSWORD}
       POSTGRES_DB: asuka_ai
     ports:
       - "5432:5432"
+    # pg18 与旧 pg16 数据目录不兼容，使用独立卷；旧 postgres_data 卷保留作备份
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - postgres_age_data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 10s
@@ -100,6 +105,14 @@ services:
     environment:
       POSTGRES_HOST: postgres
       REDIS_URL: redis://redis:6379/0
+    # GPU 直通（bge-m3 优先用 GPU；无 GPU/运行时则注释本段，自动走 CPU 降级）
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
     depends_on:
       postgres:
         condition: service_healthy
@@ -108,5 +121,6 @@ services:
 
 volumes:
   mysql_data:
-  postgres_data:
+  postgres_data:      # 旧 pg16 数据卷，保留备份
+  postgres_age_data:  # 新 pg18 + AGE 数据卷
   redis_data:
