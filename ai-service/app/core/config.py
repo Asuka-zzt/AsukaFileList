@@ -26,6 +26,7 @@ class Settings(BaseSettings):
 
     # -------- LightRAG / Graph RAG --------
     lightrag_workspace_prefix: str = "kb_"     # workspace 命名前缀：kb_{kbId}
+    lightrag_working_dir: str = "/tmp/lightrag"  # 工作目录（全 PG 后端时仅放少量缓存/日志）
 
     # -------- Agent Loop --------
     agent_max_iters: int = 3                    # 检索-评估迭代上限
