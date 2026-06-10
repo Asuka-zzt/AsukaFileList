@@ -58,18 +58,18 @@ class WebDavReadFlowTest {
         assertThat(challenge.headers().firstValue("WWW-Authenticate").orElse("")).contains("Digest");
 
         // 根 PROPFIND Depth 1 → 列出挂载点 /wd
-        HttpResponse<String> root = digest("PROPFIND", "/dav/", "1", null);
+        HttpResponse<String> root = digestDepth("PROPFIND", "/dav/", "1");
         assertThat(root.statusCode()).isEqualTo(207);
         assertThat(root.body()).contains("/dav/wd");
 
         // 挂载点 PROPFIND Depth 1 → 列出 hello.txt 与 sub 目录
-        HttpResponse<String> listing = digest("PROPFIND", "/dav/wd", "1", null);
+        HttpResponse<String> listing = digestDepth("PROPFIND", "/dav/wd", "1");
         assertThat(listing.statusCode()).isEqualTo(207);
         assertThat(listing.body()).contains("hello.txt").contains("sub");
         assertThat(listing.body()).contains("<D:collection/>");
 
         // GET 文件 → 内容
-        HttpResponse<String> get = digest("GET", "/dav/wd/hello.txt", null, null);
+        HttpResponse<String> get = digest("GET", "/dav/wd/hello.txt");
         assertThat(get.statusCode()).isEqualTo(200);
         assertThat(get.body()).isEqualTo("dav-content");
 
@@ -78,19 +78,105 @@ class WebDavReadFlowTest {
         assertThat(noAuth.statusCode()).isEqualTo(401);
     }
 
+    @Test
+    void readWriteFlow() throws Exception {
+        String token = login();
+        createStorage(token, "/ww", tempDir);
+        setWebdavPassword(token, DAV_PASS);
+
+        // PUT 新文件
+        HttpResponse<String> put = digestBody("PUT", "/dav/ww/note.txt", "v=1", "text/plain");
+        assertThat(put.statusCode()).isEqualTo(201);
+        assertThat(Files.readString(tempDir.resolve("note.txt"))).isEqualTo("v=1");
+
+        // GET 取回
+        assertThat(digest("GET", "/dav/ww/note.txt").body()).isEqualTo("v=1");
+
+        // MOVE 同目录改名（Windows F2 重命名）
+        assertThat(digestDest("MOVE", "/dav/ww/note.txt", "/dav/ww/note2.txt").statusCode()).isEqualTo(201);
+        assertThat(Files.exists(tempDir.resolve("note.txt"))).isFalse();
+        assertThat(Files.readString(tempDir.resolve("note2.txt"))).isEqualTo("v=1");
+        // 复位文件名，后续断言不变
+        digestDest("MOVE", "/dav/ww/note2.txt", "/dav/ww/note.txt");
+
+        // MKCOL 新目录
+        assertThat(digest("MKCOL", "/dav/ww/folder").statusCode()).isEqualTo(201);
+        assertThat(Files.isDirectory(tempDir.resolve("folder"))).isTrue();
+
+        // MOVE 文件进子目录并改名（跨目录 + 重命名）
+        HttpResponse<String> move = digestDest("MOVE", "/dav/ww/note.txt", "/dav/ww/folder/renamed.txt");
+        assertThat(move.statusCode()).isEqualTo(201);
+        assertThat(Files.exists(tempDir.resolve("note.txt"))).isFalse();
+        assertThat(Files.readString(tempDir.resolve("folder/renamed.txt"))).isEqualTo("v=1");
+
+        // COPY 文件到另一目录并改名（跨目录 + 重命名）
+        HttpResponse<String> copy = digestDest("COPY", "/dav/ww/folder/renamed.txt", "/dav/ww/copy.txt");
+        assertThat(copy.statusCode()).isEqualTo(201);
+        assertThat(Files.readString(tempDir.resolve("copy.txt"))).isEqualTo("v=1");
+        assertThat(Files.readString(tempDir.resolve("folder/renamed.txt"))).isEqualTo("v=1");
+
+        // LOCK / UNLOCK
+        HttpResponse<String> lock = digest("LOCK", "/dav/ww/copy.txt");
+        assertThat(lock.statusCode()).isEqualTo(200);
+        String lockToken = lock.headers().firstValue("Lock-Token").orElseThrow();
+        assertThat(lock.body()).contains("opaquelocktoken:");
+        HttpResponse<String> unlock = digestHeader("UNLOCK", "/dav/ww/copy.txt", "Lock-Token", lockToken);
+        assertThat(unlock.statusCode()).isEqualTo(204);
+
+        // DELETE
+        assertThat(digest("DELETE", "/dav/ww/copy.txt").statusCode()).isEqualTo(204);
+        assertThat(Files.exists(tempDir.resolve("copy.txt"))).isFalse();
+    }
+
     // ─── Digest 客户端 ──────────────────────────────────────────
 
+    private HttpResponse<String> digest(String method, String path) throws Exception {
+        return davSend(method, path, null, null, Map.of());
+    }
+
+    private HttpResponse<String> digestDepth(String method, String path, String depth) throws Exception {
+        return davSend(method, path, null, null, Map.of("Depth", depth));
+    }
+
+    private HttpResponse<String> digestBody(String method, String path, String body, String contentType) throws Exception {
+        return davSend(method, path, body, contentType, Map.of());
+    }
+
+    private HttpResponse<String> digestDest(String method, String path, String destPath) throws Exception {
+        return davSend(method, path, null, null, Map.of("Destination", "http://127.0.0.1:" + port + destPath));
+    }
+
+    private HttpResponse<String> digestHeader(String method, String path, String name, String value) throws Exception {
+        return davSend(method, path, null, null, Map.of(name, value));
+    }
+
     /**
-     * 执行一次带 Digest 的请求（先取 challenge，再带 Authorization 重试）。
+     * 两步 Digest：先取 challenge，再带 Authorization + 额外头/体重试。
      */
-    private HttpResponse<String> digest(String method, String path, String depth, String body) throws Exception {
-        HttpResponse<String> first = send(reqWithDepth(method, path, depth).build());
+    private HttpResponse<String> davSend(String method, String path, String body, String contentType,
+                                         Map<String, String> headers) throws Exception {
+        HttpResponse<String> first = send(build(method, path, body, contentType, headers, null));
         if (first.statusCode() != 401) {
             return first;
         }
         Map<String, String> ch = parse(first.headers().firstValue("WWW-Authenticate").orElseThrow().substring(7));
-        String authHeader = buildAuth(method, path, ch);
-        return send(reqWithDepth(method, path, depth).header("Authorization", authHeader).build());
+        return send(build(method, path, body, contentType, headers, buildAuth(method, path, ch)));
+    }
+
+    private HttpRequest build(String method, String path, String body, String contentType,
+                              Map<String, String> headers, String authHeader) {
+        HttpRequest.BodyPublisher publisher = body == null
+                ? HttpRequest.BodyPublishers.noBody()
+                : HttpRequest.BodyPublishers.ofString(body, StandardCharsets.UTF_8);
+        HttpRequest.Builder b = HttpRequest.newBuilder(uri(path)).method(method, publisher);
+        headers.forEach(b::header);
+        if (contentType != null) {
+            b.header("Content-Type", contentType);
+        }
+        if (authHeader != null) {
+            b.header("Authorization", authHeader);
+        }
+        return b.build();
     }
 
     private String buildAuth(String method, String uri, Map<String, String> ch) {
@@ -151,14 +237,6 @@ class WebDavReadFlowTest {
 
     private HttpRequest.Builder req(String method, String path) {
         return HttpRequest.newBuilder(uri(path)).method(method, HttpRequest.BodyPublishers.noBody());
-    }
-
-    private HttpRequest.Builder reqWithDepth(String method, String path, String depth) {
-        HttpRequest.Builder b = req(method, path);
-        if (depth != null) {
-            b.header("Depth", depth);
-        }
-        return b;
     }
 
     private HttpResponse<String> send(HttpRequest request) throws Exception {

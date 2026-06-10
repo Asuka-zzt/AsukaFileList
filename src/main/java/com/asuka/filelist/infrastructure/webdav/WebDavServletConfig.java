@@ -15,8 +15,9 @@ public class WebDavServletConfig {
     public ServletRegistrationBean<WebDavServlet> webDavServletRegistration(
             WebDavService webDavService,
             WebDavDigestAuthenticator authenticator,
-            WebDavStreaming streaming) {
-        WebDavServlet servlet = new WebDavServlet(webDavService, authenticator, streaming);
+            WebDavStreaming streaming,
+            WebDavLockManager lockManager) {
+        WebDavServlet servlet = new WebDavServlet(webDavService, authenticator, streaming, lockManager);
         ServletRegistrationBean<WebDavServlet> registration =
                 new ServletRegistrationBean<>(servlet, "/dav/*");
         registration.setName("webDavServlet");

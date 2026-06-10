@@ -24,6 +24,20 @@ final class WebDavXml {
     }
 
     /**
+     * 构建 LOCK 响应体（lockdiscovery）。
+     */
+    static String lockDiscovery(String token, long timeoutSeconds) {
+        return "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
+                + "<D:prop xmlns:D=\"DAV:\"><D:lockdiscovery><D:activelock>"
+                + "<D:locktype><D:write/></D:locktype>"
+                + "<D:lockscope><D:exclusive/></D:lockscope>"
+                + "<D:depth>infinity</D:depth>"
+                + "<D:timeout>Second-" + timeoutSeconds + "</D:timeout>"
+                + "<D:locktoken><D:href>" + escape(token) + "</D:href></D:locktoken>"
+                + "</D:activelock></D:lockdiscovery></D:prop>\n";
+    }
+
+    /**
      * 构建 multistatus；davPrefix 形如 /dav，resources 第一个为目标自身，其余为子项。
      */
     static String multiStatus(String davPrefix, List<DavResource> resources) {
