@@ -20,7 +20,10 @@ public enum ErrorCode {
     SHARE_TOKEN_INVALID("SHARE_TOKEN_INVALID", "Share token is missing or invalid", HttpStatus.UNAUTHORIZED),
     SHARE_DOWNLOAD_DISABLED("SHARE_DOWNLOAD_DISABLED", "Share download is disabled", HttpStatus.FORBIDDEN),
     INTERNAL_ERROR("INTERNAL_ERROR", "Internal server error", HttpStatus.INTERNAL_SERVER_ERROR),
-    AI_SERVICE_ERROR("AI_SERVICE_ERROR", "AI service error", HttpStatus.BAD_GATEWAY);
+    AI_SERVICE_ERROR("AI_SERVICE_ERROR", "AI service error", HttpStatus.BAD_GATEWAY),
+    KB_NOT_FOUND("KB_NOT_FOUND", "Knowledge base not found", HttpStatus.NOT_FOUND),
+    KB_DOCUMENT_NOT_FOUND("KB_DOCUMENT_NOT_FOUND", "Knowledge base document not found", HttpStatus.NOT_FOUND),
+    KB_DOCUMENT_DUPLICATE("KB_DOCUMENT_DUPLICATE", "Document already added to this knowledge base", HttpStatus.CONFLICT);
 
     private final String code;
     private final String message;
