@@ -1,3 +1,3 @@
-from app.api import index_router, search_router, chat_router, task_router
+from app.api import kb_router
 
-__all__ = ["index_router", "search_router", "chat_router", "task_router"]
+__all__ = ["kb_router"]

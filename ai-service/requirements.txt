@@ -16,16 +16,10 @@ openai==1.51.0
 pydantic==2.7.1
 pydantic-settings==2.2.1
 
-# 数据库（pgvector 向量存储 / LightRAG PG 后端）
-# 注：LightRAG 要求 asyncpg>=0.31.0，故从旧管线的 0.29.0 升级
+# 数据库（LightRAG PG 后端直连）
 asyncpg==0.31.0
-sqlalchemy[asyncio]==2.0.30
-pgvector==0.2.5
-
-# 文档解析
-pypdf==4.2.0
-python-docx==1.1.2
-openpyxl==3.1.2
+# 注：pgvector / pypdf / python-docx / openpyxl 由 lightrag-hku 传递依赖提供，
+# 旧自研 chunk RAG 下线后不再显式固定（避免与 lightrag 版本约束冲突）。
 
 # ── Graph RAG 知识库（P0 新增依赖，已获用户批准）──────────────
 lightrag-hku==1.5.1          # Graph RAG 引擎（实体抽取 + 向量检索 + 增量更新）
