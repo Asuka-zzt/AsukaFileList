@@ -3,12 +3,9 @@ package com.asuka.filelist.application.ai;
 import java.io.OutputStream;
 
 /**
- * AI 服务（Python，内网）客户端。封装索引、删除、任务查询与问答透传。
+ * AI 服务（Python，内网）客户端。封装知识库索引、删除、任务查询与问答透传。
  */
 public interface AiServiceClient {
-
-    /** 旧管线：单文件级索引（迁移期保留）。 */
-    AiIndexResponse submitIndex(AiIndexRequest request);
 
     /** 提交知识库文档的解析+增量索引任务，返回 taskId。 */
     AiKbTaskResponse submitKbIndex(long kbId, AiKbIndexRequest request);

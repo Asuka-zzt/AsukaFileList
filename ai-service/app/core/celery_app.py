@@ -6,7 +6,7 @@ celery_app = Celery(
     "ai_service",
     broker=settings.redis_url,
     backend=settings.redis_url,
-    include=["app.tasks.index_tasks", "app.tasks.kb_index_tasks"],
+    include=["app.tasks.kb_index_tasks"],
 )
 
 celery_app.conf.update(

@@ -11,13 +11,10 @@ class Settings(BaseSettings):
     # -------- DeepSeek --------
     deepseek_api_key: str = ""
     deepseek_base_url: str = "https://api.deepseek.com/v1"
-    deepseek_embed_model: str = "deepseek-embedding"
     deepseek_chat_model: str  = "deepseek-chat"
-    embed_dim: int = 1024                       # 向量维度
+    embed_dim: int = 1024                       # bge-m3 向量维度
 
-    # -------- PostgreSQL + pgvector --------
-    postgres_dsn: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/cloud_ai"
-    # LightRAG 的 PG 后端 DSN（asyncpg 原生格式，区别于上方 SQLAlchemy DSN）
+    # -------- PostgreSQL（LightRAG PG 后端，asyncpg 原生格式）--------
     postgres_age_dsn: str = "postgresql://postgres:postgres@localhost:5432/asuka_ai"
 
     # -------- Embedding（本地 bge-m3）--------
