@@ -159,6 +159,53 @@ async def ainsert(kb_id, text: str, ids=None, file_paths=None) -> None:
     await rag.ainsert(text, ids=ids, file_paths=file_paths)
 
 
+async def adelete_by_doc_id(kb_id, doc_id: str) -> None:
+    """从某 KB 的 workspace 移除一篇文档的索引（含其实体/关系/向量/chunk）。"""
+    rag = await get_lightrag(kb_id)
+    await rag.adelete_by_doc_id(doc_id)
+
+
+async def delete_workspace(kb_id) -> None:
+    """删除整个 KB 的 LightRAG 数据：清各 PG 表中该 workspace 的行 + drop AGE 图。
+
+    LightRAG 无原生「删 workspace」接口，故直连 PG 清理。先释放缓存实例的连接池。
+    """
+    import re
+
+    import asyncpg
+
+    workspace = workspace_of(kb_id)
+    async with _rag_lock:
+        inst = _rag_instances.pop(workspace, None)
+    if inst is not None:
+        await inst.finalize_storages()
+
+    _ensure_pg_env()
+    conn = await asyncpg.connect(
+        host=os.environ["POSTGRES_HOST"],
+        port=int(os.environ["POSTGRES_PORT"]),
+        user=os.environ["POSTGRES_USER"],
+        password=os.environ.get("POSTGRES_PASSWORD"),
+        database=os.environ["POSTGRES_DATABASE"],
+    )
+    try:
+        rows = await conn.fetch(
+            "SELECT tablename FROM pg_tables WHERE tablename LIKE 'lightrag_%'"
+        )
+        for row in rows:
+            await conn.execute(
+                f'DELETE FROM {row["tablename"]} WHERE workspace = $1', workspace
+            )
+        graph = re.sub(r"[^a-zA-Z0-9_]", "_", workspace) + "_chunk_entity_relation"
+        await conn.execute("LOAD 'age'; SET search_path = ag_catalog, public;")
+        try:
+            await conn.execute(f"SELECT drop_graph('{graph}', true)")
+        except asyncpg.PostgresError:
+            pass  # 图不存在（从未索引过）时忽略
+    finally:
+        await conn.close()
+
+
 async def close_all() -> None:
     """释放所有已缓存的 LightRAG 实例的存储连接（服务关闭时调用）。"""
     async with _rag_lock:
