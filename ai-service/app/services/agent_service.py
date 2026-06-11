@@ -53,25 +53,46 @@ async def _grade(question: str, context: str) -> dict:
     return {"sufficient": bool(data.get("sufficient")), "refine": (data.get("refine") or "").strip()}
 
 
-async def _retrieve(rag, query: str) -> dict:
-    """对一个子问题取原始检索结果（实体/关系/chunk + 引用）。"""
-    result = await rag.aquery_data(query, param=QueryParam(mode="mix"))
+# 单文档模式放大召回，补偿「召回后按文档过滤」的损耗（见设计 §4.4）
+_SINGLE_DOC_TOP_K = 60
+_SINGLE_DOC_CHUNK_TOP_K = 40
+
+
+async def _retrieve(rag, query: str, doc_id=None) -> dict:
+    """对一个子问题取原始检索结果（实体/关系/chunk + 引用）。单文档模式放大召回。"""
+    if doc_id:
+        param = QueryParam(mode="mix", top_k=_SINGLE_DOC_TOP_K, chunk_top_k=_SINGLE_DOC_CHUNK_TOP_K)
+    else:
+        param = QueryParam(mode="mix")
+    result = await rag.aquery_data(query, param=param)
     return result.get("data", {}) if isinstance(result, dict) else {}
 
 
-def _aggregate(datas: list[dict]) -> tuple[list[dict], dict]:
-    """跨子问题/多轮聚合 chunk 并去重；汇总 reference_id→file_path。"""
+def _aggregate(datas: list[dict], doc_id=None) -> tuple[list[dict], dict]:
+    """跨子问题/多轮聚合 chunk 并去重；汇总 reference_id→file_path。
+
+    单文档模式（doc_id 非空）：只保留 chunk_id 属于该文档的 chunk（chunk_id 形如
+    `{doc_id}-chunk-N`），引用也只保留被这些 chunk 引用到的，避免串档。
+    """
     chunks: dict[str, dict] = {}
-    refs: dict[str, str] = {}
+    all_refs: dict[str, str] = {}
     for data in datas:
         for c in data.get("chunks", []) or []:
-            key = c.get("chunk_id") or (c.get("content", "")[:80])
+            cid = c.get("chunk_id") or ""
+            if doc_id and not cid.startswith(doc_id):
+                continue
+            key = cid or (c.get("content", "")[:80])
             if key:
                 chunks[key] = c
         for r in data.get("references", []) or []:
             if r.get("reference_id"):
-                refs[r["reference_id"]] = r.get("file_path", "")
-    return list(chunks.values()), refs
+                all_refs[r["reference_id"]] = r.get("file_path", "")
+    kept = list(chunks.values())
+    if not doc_id:
+        return kept, all_refs
+    used = {c.get("reference_id") for c in kept if c.get("reference_id")}
+    refs = {rid: fp for rid, fp in all_refs.items() if rid in used}
+    return kept, refs
 
 
 def _build_context(chunks: list[dict], refs: dict) -> tuple[str, list[dict]]:
@@ -109,6 +130,8 @@ async def run_agent(kb_id, question: str, doc_id=None, history=None):
     try:
         async with asyncio.timeout(settings.agent_timeout_s):
             rag = await lightrag_service.get_lightrag(kb_id)
+            mode = "single_doc" if doc_id else "kb"
+            yield _sse({"type": "status", "stage": "route", "mode": mode})
             yield _sse({"type": "status", "stage": "decompose"})
             subqueries = await _decompose(question)
             yield _sse({"type": "status", "stage": "decomposed", "subqueries": subqueries})
@@ -118,8 +141,8 @@ async def run_agent(kb_id, question: str, doc_id=None, history=None):
             for it in range(1, settings.agent_max_iters + 1):
                 yield _sse({"type": "status", "stage": "retrieve", "iter": it})
                 for q in queries:
-                    collected.append(await _retrieve(rag, q))
-                chunks, refs = _aggregate(collected)
+                    collected.append(await _retrieve(rag, q, doc_id))
+                chunks, refs = _aggregate(collected, doc_id)
                 context, citations = _build_context(chunks, refs)
                 grade = await _grade(question, context)
                 yield _sse({"type": "status", "stage": "grade", "iter": it,
