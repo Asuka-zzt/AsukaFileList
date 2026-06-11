@@ -50,6 +50,8 @@ public class AuthenticationInterceptor implements HandlerInterceptor {
                 || "/api/health".equals(path)
                 || path.startsWith("/api/public/share/")
                 || path.startsWith("/sd/")
+                // 内部接口（AI 服务回连）：自行用 master token 鉴权，跳过 JWT
+                || path.startsWith("/internal/")
                 || path.startsWith("/actuator")
                 || "/error".equals(path);
     }
