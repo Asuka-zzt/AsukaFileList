@@ -13,6 +13,9 @@ import Shares from './pages/Shares'
 import PublicShare from './pages/PublicShare'
 import Settings from './pages/Settings'
 import AdminStorages from './pages/admin/Storages'
+import KnowledgeBases from './pages/KnowledgeBases'
+import KbDocuments from './pages/KbDocuments'
+import KbChat from './pages/KbChat'
 
 // Simple protected route wrapper
 function ProtectedRoute({ children, requireAdmin = false }: { children: React.ReactNode; requireAdmin?: boolean }) {
@@ -70,6 +73,9 @@ function MainLayout({ children }: { children: React.ReactNode }) {
           </Link>
           <Link to="/shares" className={`block px-3 py-2 rounded hover:bg-gray-100 mt-1 ${location.pathname === '/shares' ? 'bg-blue-50 text-primary font-medium' : ''}`}>
             🔗 我的分享
+          </Link>
+          <Link to="/kb" className={`block px-3 py-2 rounded hover:bg-gray-100 mt-1 ${location.pathname.startsWith('/kb') ? 'bg-blue-50 text-primary font-medium' : ''}`}>
+            📚 知识库
           </Link>
           <Link to="/settings" className={`block px-3 py-2 rounded hover:bg-gray-100 mt-1 ${location.pathname === '/settings' ? 'bg-blue-50 text-primary font-medium' : ''}`}>
             ⚙️ 个人设置
@@ -185,6 +191,39 @@ function App() {
           <ProtectedRoute>
             <MainLayout>
               <Settings />
+            </MainLayout>
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/kb"
+        element={
+          <ProtectedRoute>
+            <MainLayout>
+              <KnowledgeBases />
+            </MainLayout>
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/kb/:kbId/documents"
+        element={
+          <ProtectedRoute>
+            <MainLayout>
+              <KbDocuments />
+            </MainLayout>
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/kb/:kbId/chat"
+        element={
+          <ProtectedRoute>
+            <MainLayout>
+              <KbChat />
             </MainLayout>
           </ProtectedRoute>
         }
