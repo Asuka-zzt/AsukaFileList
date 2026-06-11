@@ -1,7 +1,5 @@
 package com.asuka.filelist.infrastructure.client;
 
-import com.asuka.filelist.application.ai.AiIndexRequest;
-import com.asuka.filelist.application.ai.AiIndexResponse;
 import com.asuka.filelist.application.ai.AiKbChatRequest;
 import com.asuka.filelist.application.ai.AiKbIndexRequest;
 import com.asuka.filelist.application.ai.AiKbTaskResponse;
@@ -21,11 +19,6 @@ import java.nio.charset.StandardCharsets;
 @Component
 @ConditionalOnProperty(prefix = "asuka.ai", name = "enabled", havingValue = "false")
 public class NoopAiServiceClient implements AiServiceClient {
-
-    @Override
-    public AiIndexResponse submitIndex(AiIndexRequest request) {
-        return new AiIndexResponse("noop");
-    }
 
     @Override
     public AiKbTaskResponse submitKbIndex(long kbId, AiKbIndexRequest request) {

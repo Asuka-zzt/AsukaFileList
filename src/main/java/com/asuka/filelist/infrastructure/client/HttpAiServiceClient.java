@@ -1,7 +1,5 @@
 package com.asuka.filelist.infrastructure.client;
 
-import com.asuka.filelist.application.ai.AiIndexRequest;
-import com.asuka.filelist.application.ai.AiIndexResponse;
 import com.asuka.filelist.application.ai.AiKbChatRequest;
 import com.asuka.filelist.application.ai.AiKbIndexRequest;
 import com.asuka.filelist.application.ai.AiKbTaskResponse;
@@ -46,12 +44,6 @@ public class HttpAiServiceClient implements AiServiceClient {
         this.baseUrl = trimTrailingSlash(properties.ai().baseUrl());
         this.apiKey = properties.ai().apiKey();
         this.objectMapper = objectMapper;
-    }
-
-    @Override
-    public AiIndexResponse submitIndex(AiIndexRequest request) {
-        String body = sendJson("POST", "/internal/index", request);
-        return readValue(body, AiIndexResponse.class);
     }
 
     @Override
