@@ -103,3 +103,31 @@ CREATE TABLE IF NOT EXISTS file_index_nodes (
     storage_id BIGINT       NOT NULL,
     CONSTRAINT uk_fin_storage_parent_name UNIQUE (storage_id, parent, name)
 );
+
+CREATE TABLE IF NOT EXISTS kb_knowledge_base (
+    id          BIGINT       AUTO_INCREMENT PRIMARY KEY,
+    user_id     BIGINT       NOT NULL,
+    name        VARCHAR(200) NOT NULL,
+    description VARCHAR(1000),
+    workspace   VARCHAR(64),
+    status      VARCHAR(20)  NOT NULL DEFAULT 'active',
+    created_at  DATETIME,
+    updated_at  DATETIME
+);
+
+CREATE TABLE IF NOT EXISTS kb_document (
+    id              BIGINT        AUTO_INCREMENT PRIMARY KEY,
+    kb_id           BIGINT        NOT NULL,
+    user_id         BIGINT        NOT NULL,
+    source_path     VARCHAR(1000) NOT NULL,
+    source_file_id  BIGINT,
+    file_name       VARCHAR(500)  NOT NULL,
+    doc_type        VARCHAR(20)   NOT NULL DEFAULT 'paper',
+    lightrag_doc_id VARCHAR(128),
+    status          VARCHAR(20)   NOT NULL DEFAULT 'pending',
+    error_msg       VARCHAR(2000),
+    task_id         VARCHAR(128),
+    created_at      DATETIME,
+    updated_at      DATETIME,
+    CONSTRAINT uk_kbdoc_kb_source UNIQUE (kb_id, source_path)
+);
