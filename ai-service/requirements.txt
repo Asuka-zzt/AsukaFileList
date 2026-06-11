@@ -18,8 +18,8 @@ pydantic-settings==2.2.1
 
 # 数据库（LightRAG PG 后端直连）
 asyncpg==0.31.0
-# 注：pgvector / pypdf / python-docx / openpyxl 由 lightrag-hku 传递依赖提供，
-# 旧自研 chunk RAG 下线后不再显式固定（避免与 lightrag 版本约束冲突）。
+# 旧自研 chunk RAG 下线后不再直接使用 pgvector / pypdf / python-docx / openpyxl，
+# 因此不再显式固定这些可选依赖，避免与 LightRAG 的 extras 版本约束冲突。
 
 # ── Graph RAG 知识库（P0 新增依赖，已获用户批准）──────────────
 lightrag-hku==1.5.1          # Graph RAG 引擎（实体抽取 + 向量检索 + 增量更新）
