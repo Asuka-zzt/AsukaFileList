@@ -25,6 +25,7 @@ asuka:
     base-url: http://localhost:9999
     api-key: test-key
     internal-download-token: test-token
+    internal-base-url: http://localhost:8080
   storage:
     list-cache-enabled: false
     link-cache-enabled: false

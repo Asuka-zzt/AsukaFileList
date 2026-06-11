@@ -75,7 +75,7 @@ class DownloadSignServiceTest {
     private AsukaProperties properties(long ttlSeconds, boolean signAll) {
         return new AsukaProperties(
                 new AsukaProperties.Jwt(SECRET, 1),
-                new AsukaProperties.Ai("http://localhost:8000", "key", "token"),
+                new AsukaProperties.Ai("http://localhost:8000", "key", "token", "http://localhost:8080"),
                 new AsukaProperties.Storage(false, false, List.of("/tmp")),
                 new AsukaProperties.Upload(
                         AsukaProperties.DataSize.ofMegabytes(100),

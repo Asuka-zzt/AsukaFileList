@@ -28,7 +28,9 @@ public record AsukaProperties(
     public record Ai(
             @NotBlank String baseUrl,
             @NotBlank String apiKey,
-            @NotBlank String internalDownloadToken
+            @NotBlank String internalDownloadToken,
+            // 供 AI 服务回连 Java 下载文件的基础 URL（内网可达地址）
+            @NotBlank String internalBaseUrl
     ) {
     }
 

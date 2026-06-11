@@ -49,7 +49,7 @@ class JwtTokenProviderTest {
     private AsukaProperties properties() {
         return new AsukaProperties(
                 new AsukaProperties.Jwt("unit-test-secret", 1),
-                new AsukaProperties.Ai("http://localhost:8000", "key", "token"),
+                new AsukaProperties.Ai("http://localhost:8000", "key", "token", "http://localhost:8080"),
                 new AsukaProperties.Storage(false, false, List.of("/tmp")),
                 new AsukaProperties.Upload(
                         AsukaProperties.DataSize.ofMegabytes(100),
