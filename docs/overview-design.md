@@ -7,7 +7,8 @@ AsukaFileList 目标是逐步搭建一个 Java 版本的 AList，并在文件管
 产品分为两个核心服务：
 
 - Java 主服务：负责用户、权限、存储挂载、统一文件系统、下载/上传、分享、任务、管理后台接口等 AList 核心能力。
-- Python AI 服务：负责文件内容解析、文本切分、Embedding、向量检索、混合检索和 RAG 流式问答。
+- Python AI 服务：负责 PDF/Markdown 解析、LightRAG 图谱与向量索引、Agentic RAG
+  检索和知识库流式问答。
 
 本设计以 `ref/alist` 的源码为主要参考，尤其参考其驱动抽象、挂载路径解析、文件系统编排、权限校验和索引构建机制。
 
@@ -37,20 +38,19 @@ AsukaFileList 目标是逐步搭建一个 Java 版本的 AList，并在文件管
 - 统一文件系统：提供 list、get、mkdir、rename、move、copy、remove、upload、link/download。
 - 分享能力：公开分享、密码校验、过期、访问次数、下载限制。
 - 任务中心：上传、复制、离线下载、索引等耗时任务的异步调度和进度查询。
-- AI 服务协作：文件新增/更新后触发索引任务，向 Python 服务提供内部下载 URL。
+- AI 服务协作：用户把文件加入知识库后触发索引任务，向 Python 服务提供内部下载 URL。
 
 ### 3.2 Python AI 服务职责
 
-当前 `ai-service` 已具备雏形：
+当前 `ai-service` 提供：
 
 - FastAPI 服务入口：`ai-service/app/main.py`
-- 内部索引接口：`POST /internal/index`
-- 语义搜索：`POST /v1/search/semantic`
-- 混合搜索：`POST /v1/search/hybrid`
-- RAG 问答：`POST /v1/chat`，SSE 流式输出
-- Celery 异步索引任务
-- PostgreSQL + pgvector 存储文本 chunk 向量
-- Redis 作为 Celery broker/result backend
+- 知识库增量索引：`POST /kb/{kbId}/index`
+- 知识库/文档删除：`DELETE /kb/{kbId}`、`DELETE /kb/{kbId}/doc/{docId}`
+- Agentic RAG 问答：`POST /kb/{kbId}/chat`，SSE 流式输出
+- Celery 异步解析与索引任务，同一知识库通过 Redis 锁串行化
+- LightRAG 使用 PostgreSQL + pgvector + Apache AGE 存储 KV、向量、图和文档状态
+- 本地 bge-m3 Embedding 与 DeepSeek Chat
 
 AI 服务不直接管理用户文件系统，只通过 Java 主服务授权的内部下载 URL 拉取文件内容。
 
@@ -66,8 +66,8 @@ flowchart LR
     Java --> Cache[(Redis: 缓存/锁/任务状态)]
     Java --> Storage[(本地磁盘/对象存储/网盘)]
 
-    Java -->|内部索引任务| AI[Python AI Service]
-    AI --> PG[(PostgreSQL + pgvector)]
+    Java -->|KB 索引/问答| AI[Python AI Service]
+    AI --> PG[(PostgreSQL + pgvector + AGE)]
     AI --> Redis[(Redis/Celery)]
     AI --> LLM[DeepSeek / 其他模型服务]
     AI -->|下载待索引文件| Java
@@ -86,8 +86,9 @@ flowchart LR
 | fs | 统一文件系统应用服务，完成路径解析、权限检查、缓存、排序和驱动调用 |
 | share | 分享链接、访问令牌、过期和访问限制 |
 | task | 异步任务、进度、取消、失败重试 |
-| search-index | 文件名索引及和 AI 索引的触发协调 |
+| search-index | 文件名索引 |
 | ai-client | 调用 Python AI 服务的内部客户端 |
+| kb | 知识库、文档归属、索引状态和问答代理 |
 | protocol | HTTP 下载、WebDAV、S3 兼容协议，后续再扩展 FTP/SFTP |
 | admin-api | 管理存储、驱动、用户、角色、设置、索引、任务 |
 
@@ -95,12 +96,12 @@ flowchart LR
 
 | 模块 | 当前代码 | 职责 |
 | --- | --- | --- |
-| api | `ai-service/app/api` | 暴露索引、搜索、问答、任务状态接口 |
-| index | `services/index_service.py` | 下载文件、解析文本、切分、生成向量、入库 |
-| embedding | `services/embedding_service.py` | 模型 Embedding API 封装和重试 |
-| search | `services/search_service.py` | pgvector 语义搜索、PostgreSQL 全文搜索、RRF 融合 |
-| chat | `services/chat_service.py` | 检索上下文并调用 Chat API，SSE 流式输出 |
-| task | `tasks/index_tasks.py` | Celery 异步索引任务 |
+| api | `ai-service/app/api/kb_router.py` | 内网 KB 索引、删除、问答和任务状态接口 |
+| parse | `services/parse_service.py` | 下载 PDF/Markdown，并统一转换为 Markdown |
+| lightrag | `services/lightrag_service.py` | workspace 实例、PG 存储、增量插入与删除 |
+| embedding | `services/embedding_service.py` | 本地 bge-m3 加载、GPU/CPU 选择 |
+| agent | `services/agent_service.py` | 查询分解、检索、充分性评估、引用与流式回答 |
+| task | `tasks/kb_index_tasks.py` | Celery KB 索引任务、Redis 串行锁、状态回调 |
 
 ## 6. 关键业务流程
 
@@ -126,41 +127,43 @@ sequenceDiagram
     API-->>C: FsListResp
 ```
 
-### 6.2 文件上传后触发知识库索引
+### 6.2 文件加入知识库后触发索引
 
 ```mermaid
 sequenceDiagram
     participant C as Client
     participant Java as Java 主服务
-    participant Task as TaskService
+    participant Task as Celery Worker
     participant AI as Python AI Service
-    participant PG as pgvector
+    participant PG as pgvector + AGE
 
-    C->>Java: PUT /api/fs/put
-    Java->>Java: 权限校验、路径解析、驱动上传
-    Java->>Task: 创建 AI 索引任务事件
-    Task->>AI: POST /internal/index
-    AI->>Java: GET internal download URL
-    AI->>AI: 解析文本、切分、Embedding
-    AI->>PG: upsert vector_doc
-    AI-->>Task: taskId / task result
+    C->>Java: POST /api/kb/{kbId}/documents
+    Java->>Java: 校验 KB、文件和用户归属
+    Java->>Java: 生成短期内部下载 URL
+    Java->>AI: POST /kb/{kbId}/index
+    AI->>Task: 投递 Celery 索引任务
+    Task->>Java: GET internal download URL
+    Task->>Task: PDF/Markdown 解析
+    Task->>PG: LightRAG ainsert（图谱+向量）
+    Task->>Java: 回调 parsing/indexing/indexed 或 failed
 ```
 
-### 6.3 RAG 问答
+### 6.3 知识库问答
 
 ```mermaid
 sequenceDiagram
     participant C as Client
     participant Java as Java 主服务
     participant AI as Python AI Service
-    participant PG as pgvector
+    participant PG as pgvector + AGE
     participant LLM as Chat Model
 
-    C->>Java: POST /api/ai/chat
-    Java->>Java: 鉴权并补充 userId
-    Java->>AI: POST /v1/chat
-    AI->>PG: semantic_search(topK)
-    AI->>LLM: chat.completions(stream=true)
+    C->>Java: POST /api/kb/{kbId}/chat
+    Java->>Java: 校验 KB/文档归属
+    Java->>AI: POST /kb/{kbId}/chat
+    AI->>LLM: 分解问题
+    AI->>PG: LightRAG mix 检索
+    AI->>LLM: 充分性评估与引用回答
     LLM-->>AI: token stream
     AI-->>Java: SSE
     Java-->>C: SSE
@@ -170,25 +173,14 @@ sequenceDiagram
 
 - MySQL：Java 主服务业务数据，包括用户、角色、存储、meta、分享、任务、文件索引元数据。
 - Redis：任务队列、短期缓存、分布式锁、会话刷新缓存。
-- PostgreSQL + pgvector：AI 服务向量数据和全文检索数据。
+- PostgreSQL + pgvector + Apache AGE：LightRAG 的 KV、向量、图谱和文档状态。
 - 对象/网盘存储：真实文件内容，由各驱动访问。
 
 ## 8. 安全设计原则
 
-- 外部用户只访问 Java 主服务，Python AI 服务只暴露内网或通过 API Key 保护。
+- 外部用户只访问 Java 主服务；Python AI 服务默认只暴露 Compose 内网，并使用
+  `X-API-Key` 鉴权。
 - Java 生成内部下载 URL 时必须带短期签名或内部 token。
 - Python AI 服务请求 Java 下载文件时使用 `Authorization: Bearer <master_token>`。
 - 用户路径必须先经过 `basePath` 拼接和规范化，避免越权访问挂载根以外路径。
 - 分享访问令牌和下载签名分离，避免公开分享获得主站登录能力。
-
-## 9. 渐进式交付路线
-
-| 阶段 | 目标 |
-| --- | --- |
-| M1 | Java Spring Boot 项目骨架、用户/角色/存储表、Local 驱动、基础 list/get/download |
-| M2 | 上传、mkdir、rename、move、copy、remove、任务中心、文件名搜索 |
-| M3 | Python AI 服务和 Java 联调，上传/更新触发索引，语义搜索和 RAG 问答代理 |
-| M4 | 分享、目录 meta、隐藏规则、下载签名、缓存和限速 |
-| M5 | WebDAV/S3 协议兼容，更多网盘驱动，归档预览/解压 |
-| M6 | 知识库增强：多格式解析、重排、引用溯源、增量索引、权限过滤检索 |
-

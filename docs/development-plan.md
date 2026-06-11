@@ -29,9 +29,11 @@ AsukaFileList 需要从当前 Java Spring Boot 脚手架逐步演进为完整的
 | M6 任务中心/文件名索引 | ✅ 已完成 | 进程内异步任务（进度/取消）+ 文件名索引/搜索 + 写操作增量索引 + 前端任务面板/搜索页 |
 | M7 分享与公开访问 | ✅ 已完成 | 分享 CRUD + 公开 info/auth/list/get + `/sd/{shareId}/**` 下载（密码/过期/访问次数/阅后即焚/禁下载/路径夹紧）+ 前端分享管理页与公开分享页 |
 | M8 协议兼容与更多驱动 | ✅ 已完成 | AWS S3 驱动（读写，预签名 302 下载）+ 百度网盘驱动（读写，下载经服务端 UA 代理，token 轮换回写）|
+| M9 Graph RAG 知识库 | ✅ 开发完成 | LightRAG 增量索引、整库/单文档问答、知识库前端；本地质量门禁通过 |
 | WebDAV 服务端 | ✅ 已完成 | `/dav/*` 独立 servlet + Digest（专用 WebDAV 密码，HA1）+ OPTIONS/PROPFIND/GET/PUT/MKCOL/DELETE/MOVE/COPY/LOCK；复用统一 VFS，把全部存储挂到 Windows/macOS/rclone（见 `docs/2026-06-09-webdav-server.md`）|
 
-> README 的"开发阶段"表已随 WebDAV 更新至 M0–M8 + WebDAV ✅。S3/S3 服务端协议（作为协议而非驱动）与百度分享等仍可后续扩展。
+> README 的"开发阶段"表已更新至 M0-M9 + WebDAV。S3 服务端协议
+> （作为协议而非驱动）与百度分享等仍可后续扩展。
 
 ### 两条修订原则
 
@@ -47,7 +49,7 @@ AsukaFileList 需要从当前 Java Spring Boot 脚手架逐步演进为完整的
 | **M6** | 任务中心/文件名索引 | 原 M6 | 任务进度面板、文件名搜索框与结果页 |
 | **M7** | 分享与公开访问 | 原 M8 | 分享管理页、公开分享页、密码校验 |
 | **M8** | 协议兼容与更多驱动 | 原 M9 | 存储管理页驱动配置增强（多驱动表单）|
-| **M9（最后）** | Python AI 集成 | 原 M7 | AI 语义搜索页、RAG 流式问答页 |
+| **M9（最后）** | Graph RAG 知识库 | 原 M7，经 P0-P9 专项重构 | 知识库管理、加入文档、整库/单文档问答 |
 
 > 每个里程碑的"前端切片"与后端能力放在**同一里程碑内验收**，但可拆为后端、前端两个独立提交批次。
 
@@ -589,66 +591,57 @@ docker compose up -d mysql postgres redis
 
 ### M9（最后）：Python AI 服务集成
 
-目标：Java 主服务与 Python RAG 服务联调，实现语义搜索和问答代理。本里程碑为整条路线最后一步，待文件网盘能力（M4–M8）全部完成后再接入 AI。
+目标：Java 主服务与 Python LightRAG 服务联调，实现显式知识库管理、增量索引、
+整库问答和单文档问答。本里程碑已按 P0-P9 专项计划完成开发，本地自动化验证完成。
 
 接口签名：
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| `POST` | `/api/ai/index/file` | 手动触发索引 |
-| `POST` | `/api/ai/search/semantic` | 语义搜索 |
-| `POST` | `/api/ai/search/hybrid` | 混合搜索 |
-| `POST` | `/api/ai/chat` | RAG 问答 SSE |
-| `GET` | `/api/ai/tasks/{taskId}` | AI 任务状态 |
-| `GET` | `/internal/files/{userFileId}/download` | AI 内部下载 |
+| `POST/GET` | `/api/kb` | 创建、列出当前用户知识库 |
+| `DELETE` | `/api/kb/{kbId}` | 删除知识库 |
+| `POST/GET` | `/api/kb/{kbId}/documents` | 加入文件、查询索引状态 |
+| `DELETE` | `/api/kb/{kbId}/documents/{docId}` | 移除文档 |
+| `POST` | `/api/kb/{kbId}/chat` | 整库 Agentic RAG 问答 SSE |
+| `POST` | `/api/kb/{kbId}/documents/{docId}/chat` | 单文档问答 SSE |
+| `GET` | `/internal/files/download` | AI 短期签名内部下载 |
 
 核心流程：
 
-1. 用户上传或更新文件。
-2. Java 记录文件元数据，生成 `userFileId`。
-3. Java 生成短期内部下载 URL。
-4. Java 调用 Python `POST /internal/index`。
-5. Python 下载文件、解析、切分、写入 pgvector。
-6. 用户发起语义搜索或问答。
-7. Java 代理请求 Python，并对结果做权限二次校验。
+1. 用户创建知识库，并把网盘内 PDF/Markdown 文件显式加入知识库。
+2. Java 校验知识库和文件归属，生成短期内部下载 URL。
+3. Java 调用 Python `POST /kb/{kbId}/index`，Python 投递 Celery 任务。
+4. Worker 下载并解析文件，通过 LightRAG 增量写入 PostgreSQL、pgvector 和 AGE。
+5. Worker 回调 Java 更新 `parsing/indexing/indexed/failed` 状态。
+6. 用户发起整库或单文档问答，Java 完成归属校验后代理 Python SSE。
+7. Agent loop 执行问题分解、混合检索、充分性评估、再检索和引用回答。
 
 实现步骤：
 
-1. 修改 `pom.xml`：
-   - 增加 HTTP client 依赖，优先使用 Spring `RestClient` 或 `WebClient`。
-2. 替换 `NoopAiServiceClient`：
-   - 实现 `HttpAiServiceClient`。
-   - 支持 API Key。
-   - 设置连接和读取超时。
-3. 新增 `api/controller/AiController.java`。
-4. 新增 `api/controller/InternalFileController.java`。
-5. 新增 `domain/fs/UserFile.java` 或 `file_records` 表：
-   - 绑定 `userFileId`、path、storageId、mimeType、hash。
-6. Python AI 服务补充：
-   - 删除索引接口。
-   - 更新索引元数据字段。
-   - 搜索结果带 `path/fileName/mimeType`。
-7. 增加测试：
-   - AI client mock。
-   - 内部下载 token 校验。
-   - 搜索结果权限过滤。
-   - SSE 代理。
+1. Flyway V4 建立知识库和文档元数据表。
+2. Java 实现 `/api/kb/**`、归属校验、短期下载签名、状态回调和 SSE 代理。
+3. Python 实现 PDF/Markdown 解析、LightRAG workspace、Celery 索引和 Redis 串行锁。
+4. 实现整库 Agent Loop 和单文档召回后过滤。
+5. 前端实现知识库管理、加入文档、状态轮询、两类问答和引用展示。
+6. P8 移除旧 `/internal/index`、`/v1/search/*`、`/v1/chat` 和 chunk RAG。
+7. P9 增加 Java/Python 自动测试、Web 门禁、CI 和真实 E2E 脚本。
 
 安全考量：
 
-- `/internal/**` 不对公网暴露。
+- Python `/kb/**` 不对公网暴露，Compose 默认不发布 AI 服务端口。
 - 内部下载 URL 必须短期有效。
-- Python 返回的 `userFileId` 必须由 Java 再查一次权限。
+- 所有 KB/文档操作必须由 Java 校验当前用户归属。
 
 前端切片（本阶段同步）：
 
-- AI 语义/混合搜索页；RAG 问答页（SSE 流式渲染）。
+- 知识库管理页、加入文档入口、索引状态和 RAG 问答页（SSE 流式渲染）。
 
 验收标准：
 
-- 上传 PDF 后可以触发 AI 索引。
-- `/api/ai/search/hybrid` 返回相关 chunk。
-- `/api/ai/chat` 可以流式回答。
+- Java 98 项、AI 22 项测试通过，Web lint/build 通过。
+- 加入 PDF/Markdown 后可异步索引并查询状态。
+- 整库和单文档问答可流式返回 token、引用和 done 事件。
+- 真实模型 E2E、远端 CI 与页面人工验收按 P9 脚本和清单执行。
 
 ## 横向能力建设
 
@@ -711,7 +704,7 @@ docker compose up -d mysql postgres redis
 7. M6 任务中心与文件名索引（含任务面板/搜索前端）。
 8. M7 分享、预览与公开访问（含分享管理/公开页前端）。
 9. M8 协议兼容与更多驱动（含存储配置前端）。
-10. M9（最后）Python AI 服务集成（含 AI 搜索/问答前端）。
+10. M9（最后）Python Graph RAG 知识库（含索引、问答前端和 P0-P9 验收）。
 
 每个阶段完成后必须更新：
 
@@ -722,7 +715,11 @@ docker compose up -d mysql postgres redis
 
 ## 下一步建议
 
-M0–M8 与 WebDAV 服务端均已完成（见上方"进度对账"）。**下一阶段为 M9（最后）Python AI 集成**：语义搜索与 RAG 流式问答代理。可选后续扩展：S3 服务端协议、更多网盘驱动、WebDAV 真排他锁与同目录文件副本。
+M0-M9 与 WebDAV 服务端均已完成开发。M9 的本地自动化质量门禁已通过；合并前还需
+在有效 DeepSeek/模型环境运行 `scripts/p9_kb_e2e.py`，确认远端 CI 和页面人工验收。
+可选后续扩展：S3 服务端协议、更多网盘驱动、WebDAV 真排他锁与同目录文件副本。
 
-M4 设计见 `docs/2026-06-07-m4-readwrite.md`，M5 见 `docs/2026-06-08-m5-meta-sign.md`，M6 见 `docs/2026-06-09-m6-task-index.md`，M7 见 `docs/2026-06-09-m7-share.md`，M8 见 `docs/2026-06-09-m8-s3-baidu.md`，均按"先设计、批准后编码"的工作流推进。AI 集成（原 M7）按本次修订延后至最后一个里程碑 M9。
-
+M4 设计见 `docs/2026-06-07-m4-readwrite.md`，M5 见
+`docs/2026-06-08-m5-meta-sign.md`，M6 见 `docs/2026-06-09-m6-task-index.md`，
+M7 见 `docs/2026-06-09-m7-share.md`，M8 见 `docs/2026-06-09-m8-s3-baidu.md`；
+M9 Graph RAG 设计和 P0-P9 计划见对应专题文档。
