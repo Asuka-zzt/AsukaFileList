@@ -4,11 +4,12 @@
 """
 from celery.result import AsyncResult
 from fastapi import APIRouter, Depends
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from app.core.celery_app import celery_app
 from app.core.security import verify_api_key
-from app.services import lightrag_service
+from app.services import agent_service, lightrag_service
 from app.tasks.kb_index_tasks import task_kb_index
 
 router = APIRouter(dependencies=[Depends(verify_api_key)])
@@ -21,6 +22,18 @@ class KbIndexRequest(BaseModel):
     fileName: str
     mimeType: str | None = None
     docType: str | None = "paper"
+
+
+class KbChatMessage(BaseModel):
+    role: str
+    content: str
+
+
+class KbChatRequest(BaseModel):
+    """与 Java AiKbChatRequest 对齐。docId 非空走单文档过滤（P6）。"""
+    question: str
+    docId: str | None = None
+    history: list[KbChatMessage] | None = None
 
 
 def _task_response(task_id, status, error=None):
@@ -47,6 +60,15 @@ async def delete_doc(kb_id: int, doc_id: str):
     """按 doc_id 删除某文档的索引。"""
     await lightrag_service.adelete_by_doc_id(kb_id, doc_id)
     return _task_response(None, "deleted")
+
+
+@router.post("/{kb_id}/chat")
+async def chat(kb_id: int, req: KbChatRequest):
+    """Agent loop 问答，SSE 流式返回（status/token/citations/done/error）。"""
+    history = [m.model_dump() for m in (req.history or [])]
+    return StreamingResponse(
+        agent_service.run_agent(kb_id, req.question, req.docId, history),
+        media_type="text/event-stream")
 
 
 # Celery state → 文档状态机
