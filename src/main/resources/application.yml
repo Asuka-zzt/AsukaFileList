@@ -50,6 +50,7 @@ asuka:
     base-url: ${AI_SERVICE_BASE_URL:http://localhost:8000}
     api-key: ${AI_SERVICE_KEY:dev-key}
     internal-download-token: ${MASTER_TOKEN:dev-master-token}
+    internal-base-url: ${AI_INTERNAL_BASE_URL:http://localhost:8080}
   storage:
     list-cache-enabled: true
     link-cache-enabled: true
