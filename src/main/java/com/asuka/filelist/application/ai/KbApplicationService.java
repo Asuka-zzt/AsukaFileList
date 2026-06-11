@@ -168,6 +168,25 @@ public class KbApplicationService {
         aiServiceClient.streamChat(kbId, toAiChatRequest(request, doc.getLightragDocId()), out);
     }
 
+    // ─── 索引状态回写（AI 服务回调，无需归属校验，docId 即凭据） ──
+
+    /** 按 LightRAG docId 回写文档索引状态；文档可能已删除，找不到则忽略。 */
+    @Transactional
+    public void updateDocumentStatus(String docId, String status, String lightragDocId, String error) {
+        KbDocumentEntity doc = docMapper.selectOne(new LambdaQueryWrapper<KbDocumentEntity>()
+                .eq(KbDocumentEntity::getLightragDocId, docId)
+                .last("LIMIT 1"));
+        if (doc == null) {
+            return;
+        }
+        doc.setStatus(status);
+        if (lightragDocId != null) {
+            doc.setLightragDocId(lightragDocId);
+        }
+        doc.setErrorMsg(error);
+        docMapper.updateById(doc);
+    }
+
     // ─── 内部工具 ──────────────────────────────────────────────
 
     /** 加载并校验归属的知识库，缺失/越权统一按未找到处理。 */

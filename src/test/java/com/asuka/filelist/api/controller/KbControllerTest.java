@@ -73,7 +73,9 @@ class KbControllerTest {
         mockMvc.perform(delete("/api/kb/" + kbId).header("Authorization", "Bearer " + admin))
                 .andExpect(status().isOk());
         verify(aiServiceClient).deleteKb(kbId);
-        listKbs(admin).andExpect(jsonPath("$.data.length()").value(0));
+        // 删除后该库不可再访问（不依赖全局计数，避免与其它用例共享 H2 时相互污染）
+        mockMvc.perform(get("/api/kb/" + kbId + "/documents").header("Authorization", "Bearer " + admin))
+                .andExpect(status().isNotFound());
     }
 
     /** 文档：加入触发索引、去重、列表、删除代理。 */
@@ -117,6 +119,42 @@ class KbControllerTest {
         mockMvc.perform(get("/api/kb/" + kbId + "/documents").header("Authorization", "Bearer " + admin))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.length()").value(0));
+    }
+
+    /** AI 索引状态回调按 docId 更新 kb_document；内部接口缺 master token 一律 401。 */
+    @Test
+    void indexStatusCallbackAndInternalAuth(@TempDir Path tempDir) throws Exception {
+        when(aiServiceClient.submitKbIndex(anyLong(), any()))
+                .thenReturn(new AiKbTaskResponse("task-9", "pending", null));
+        String admin = login("admin", "test-admin-password");
+        createStorage(admin, "/cb", tempDir);
+        upload(admin, "/cb/p.pdf", "%PDF-1.4 dummy");
+        long kbId = createKb(admin, "cbKB", null);
+        String addResp = addDocument(admin, kbId, "/cb/p.pdf", "paper")
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        long docId = dataId(addResp);
+        String lightragDocId = "kb" + kbId + "-doc" + docId;
+
+        // 无 token -> 401
+        mockMvc.perform(post("/internal/kb/index-callback")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"docId\":\"" + lightragDocId + "\",\"status\":\"indexed\"}"))
+                .andExpect(status().isUnauthorized());
+
+        // 正确 master token（测试配置 internal-download-token=test-token）-> 更新为 indexed
+        mockMvc.perform(post("/internal/kb/index-callback")
+                        .header("Authorization", "Bearer test-token")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"docId\":\"" + lightragDocId
+                                + "\",\"status\":\"indexed\",\"lightragDocId\":\"" + lightragDocId + "\"}"))
+                .andExpect(status().isOk());
+        mockMvc.perform(get("/api/kb/" + kbId + "/documents").header("Authorization", "Bearer " + admin))
+                .andExpect(jsonPath("$.data[0].status").value("indexed"));
+
+        // 内部下载缺 token -> 401
+        mockMvc.perform(get("/internal/kb-download")
+                        .param("path", "/cb/p.pdf").param("userId", "1").param("sign", "x"))
+                .andExpect(status().isUnauthorized());
     }
 
     // ─── helpers ───────────────────────────────────────────────
