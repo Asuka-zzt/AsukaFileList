@@ -85,6 +85,9 @@ services:
       DB_HOST: mysql
       REDIS_HOST: redis
       AI_SERVICE_BASE_URL: http://ai-service:8000
+      AI_INTERNAL_BASE_URL: http://java-service:8080
+    volumes:
+      - "${ASUKA_LOCAL_ROOT_WHITELIST:-/tmp/asuka-file-list}:${ASUKA_LOCAL_ROOT_WHITELIST:-/tmp/asuka-file-list}"
     depends_on:
       mysql:
         condition: service_healthy
@@ -109,7 +112,9 @@ services:
       POSTGRES_HOST: postgres
       # LightRAG 的 PG 后端 DSN（asyncpg 原生格式）
       POSTGRES_AGE_DSN: postgresql://postgres:${PG_PASSWORD}@postgres:5432/asuka_ai
-      REDIS_URL: redis://redis:6379/0
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_DB: 0
       # X-API-Key（与 Java asuka.ai.api-key 对齐）
       API_KEY: ${AI_SERVICE_KEY:-dev-key}
       # 回连 Java（状态回调 / 下载文件）

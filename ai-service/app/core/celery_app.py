@@ -2,10 +2,12 @@
 from celery import Celery
 from app.core.config import settings
 
+redis_url = settings.resolved_redis_url()
+
 celery_app = Celery(
     "ai_service",
-    broker=settings.redis_url,
-    backend=settings.redis_url,
+    broker=redis_url,
+    backend=redis_url,
     include=["app.tasks.kb_index_tasks"],
 )
 

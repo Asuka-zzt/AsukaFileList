@@ -16,7 +16,7 @@ from app.services.kb_callback import report_status
 # （asyncpg 连接池绑定创建它的事件循环，故不能每次任务新建/关闭循环）。
 _loop = asyncio.new_event_loop()
 
-_redis = redis.Redis.from_url(settings.redis_url)
+_redis = redis.Redis.from_url(settings.resolved_redis_url())
 
 _LOCK_TIMEOUT = 1800     # 锁最长持有 30min（防 worker 崩溃后死锁）
 _LOCK_BLOCKING = 900     # 最长等锁 15min

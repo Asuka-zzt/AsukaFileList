@@ -1,4 +1,6 @@
 """应用配置（从环境变量 / .env 读取）"""
+from urllib.parse import quote
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -30,11 +32,23 @@ class Settings(BaseSettings):
     agent_timeout_s: int = 60                   # 单次问答整体超时（秒）
 
     # -------- Redis / Celery --------
-    redis_url: str = "redis://localhost:6379/1"
+    redis_url: str = ""
+    redis_host: str = "localhost"
+    redis_port: int = 6379
+    redis_password: str = ""
+    redis_db: int = 1
 
     # -------- Java 主服务（下载文件用）--------
     master_url: str = "http://localhost:8080"
     master_token: str = ""                     # 内部服务 token
+
+    def resolved_redis_url(self) -> str:
+        """返回 Celery/Redis URL，并对密码中的保留字符执行编码。"""
+        if self.redis_url:
+            return self.redis_url
+        password = quote(self.redis_password, safe="")
+        auth = f":{password}@" if password else ""
+        return f"redis://{auth}{self.redis_host}:{self.redis_port}/{self.redis_db}"
 
 
 settings = Settings()
