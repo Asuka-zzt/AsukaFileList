@@ -196,6 +196,14 @@ def _poll_indexed(token: str, kb_id: int, doc_id: int) -> dict[str, Any]:
     )
 
 
+def _delete_document(token: str, kb_id: int, doc_id: int) -> None:
+    """Delete an indexed document and verify its public record is gone."""
+    _request_json("DELETE", f"/api/kb/{kb_id}/documents/{doc_id}", token)
+    documents = _request_json("GET", f"/api/kb/{kb_id}/documents", token)
+    if any(int(item["id"]) == doc_id for item in documents):
+        raise AcceptanceError("deleted document remains visible in the knowledge base")
+
+
 def _best_effort(method: str, path: str, token: str, payload: Any = None) -> None:
     """Run cleanup without hiding the original acceptance failure."""
     try:
@@ -259,6 +267,9 @@ def run() -> None:
         )
         _assert_chat(document_events, file_name)
         print("[P9] whole-library and single-document QA passed")
+        _delete_document(token, kb_id, doc_id)
+        doc_id = None
+        print("[P9] indexed document deletion passed")
     finally:
         if token and kb_id is not None and doc_id is not None:
             _best_effort(

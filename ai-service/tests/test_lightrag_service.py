@@ -94,3 +94,61 @@ async def test_insert_and_delete_delegate_to_workspace(
         ("insert", "content", ["doc-1"], ["note.md"]),
         ("delete", "doc-1"),
     ]
+
+
+@pytest.mark.asyncio
+async def test_delete_normalizes_chunk_ids_for_pg_storage(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """LightRAG set-based chunk ids are converted for PGKVStorage slicing."""
+    deleted_ids: list[list[str]] = []
+
+    class FakeTextChunks:
+        async def delete(self, ids):
+            deleted_ids.append(ids)
+
+    class FakeResult:
+        status = "success"
+        message = "deleted"
+
+    class FakeRag:
+        text_chunks = FakeTextChunks()
+
+        async def adelete_by_doc_id(self, doc_id):
+            assert doc_id == "doc-2"
+            await self.text_chunks.delete({"chunk-1", "chunk-2"})
+            return FakeResult()
+
+    async def fake_get(kb_id):
+        assert kb_id == 10
+        return FakeRag()
+
+    monkeypatch.setattr(lightrag_service, "get_lightrag", fake_get)
+    await lightrag_service.adelete_by_doc_id(10, "doc-2")
+
+    assert len(deleted_ids) == 1
+    assert isinstance(deleted_ids[0], list)
+    assert set(deleted_ids[0]) == {"chunk-1", "chunk-2"}
+
+
+@pytest.mark.asyncio
+async def test_delete_rejects_failed_lightrag_result(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A swallowed LightRAG deletion failure must become an API failure."""
+
+    class FakeResult:
+        status = "fail"
+        message = "chunk deletion failed"
+
+    class FakeRag:
+        async def adelete_by_doc_id(self, doc_id):
+            return FakeResult()
+
+    async def fake_get(kb_id):
+        return FakeRag()
+
+    monkeypatch.setattr(lightrag_service, "get_lightrag", fake_get)
+
+    with pytest.raises(RuntimeError, match="chunk deletion failed"):
+        await lightrag_service.adelete_by_doc_id(10, "doc-3")

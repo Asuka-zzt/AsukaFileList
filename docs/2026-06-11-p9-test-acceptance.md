@@ -236,11 +236,11 @@ python scripts/p9_kb_e2e.py
 截至 2026-06-12：
 
 - `mvn test -q`：98 passed。
-- AI pytest：24 passed。
+- AI pytest：26 passed。
 - Web ESLint 与 Vite 生产构建：通过。
 - 默认 Compose 与开发端口覆盖配置：渲染通过。
 - 真实 E2E：建库、上传 Markdown、Celery 索引、整库问答、单文档问答、
-  citations/done 校验和资源清理全部通过。
+  citations/done 校验、文档删除确认和资源清理全部通过。
 - GitHub Actions：工作流已提交到分支，待 push 后取得远端结果。
 
 真实联调期间发现并修复：
@@ -251,6 +251,8 @@ python scripts/p9_kb_e2e.py
 - 固定 LightRAG 所需的 OpenAI 2.x、pgvector、Torch、Transformers 版本。
 - Java AI client 强制 HTTP/1.1，避免 Uvicorn h2c Upgrade 探测丢失 POST body。
 - CI Python 测试改用最小依赖和确定性导入桩，不再下载 Torch/CUDA/模型。
+- 兼容 LightRAG 1.5.1 文档删除向 PGKVStorage 传入 `set` 的缺陷，并校验删除结果；
+  真实验收确认删除日志无异常且 PG 文本块无残留。
 
 ## 11. 风险与回滚
 

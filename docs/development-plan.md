@@ -638,7 +638,7 @@ docker compose up -d mysql postgres redis
 
 验收标准：
 
-- Java 98 项、AI 24 项测试通过，Web lint/build 通过。
+- Java 98 项、AI 26 项测试通过，Web lint/build 通过。
 - 加入 PDF/Markdown 后可异步索引并查询状态。
 - 整库和单文档问答可流式返回 token、引用和 done 事件。
 - 真实 DeepSeek、bge-m3、PG+AGE、Redis、Celery E2E 已通过；远端 CI 待 push 验证。

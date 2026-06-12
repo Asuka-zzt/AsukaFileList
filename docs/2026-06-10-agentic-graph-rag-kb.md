@@ -261,15 +261,15 @@ pending ──> parsing ──> indexing ──> indexed
 
 ## 9. 测试与验收结果
 
-截至 2026-06-11，本地确定性自动化验证结果：
+截至 2026-06-12，本地确定性自动化验证结果：
 
 | 检查 | 结果 | 覆盖 |
 | --- | --- | --- |
 | Java `mvn test -q` | 98 passed | KB CRUD/归属、SSE 代理、AI HTTP client、既有回归 |
-| AI `pytest -q` | 24 passed | 配置、解析、LightRAG 包装、索引任务、agent loop、路由 |
+| AI `pytest -q` | 26 passed | 配置、解析、LightRAG 包装、删除兼容、索引任务、agent loop、路由 |
 | Web lint/build | passed | ESLint、TypeScript、Vite 生产构建 |
 | Compose 配置 | passed | AI 默认仅内网暴露，Java 使用服务名访问 |
-| 真实 E2E | passed | 建库、上传、索引、整库/单文档问答、引用和清理 |
+| 真实 E2E | passed | 建库、上传、索引、整库/单文档问答、引用、文档删除和清理 |
 
 真实 DeepSeek、bge-m3、PostgreSQL+AGE、Redis、Celery 全链路已在 Compose 环境执行：
 

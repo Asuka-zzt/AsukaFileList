@@ -144,7 +144,25 @@ async def _create_lightrag(workspace: str) -> LightRAG:
     )
     # 必须：初始化存储后端（同时自动初始化 pipeline_status）
     await rag.initialize_storages()
+    _normalize_text_chunk_delete(rag)
     return rag
+
+
+def _normalize_text_chunk_delete(rag) -> None:
+    """兼容 LightRAG 1.5.1 向 PGKVStorage.delete 传入 set 的删除缺陷。"""
+    if getattr(rag, "_asuka_text_chunk_delete_wrapped", False):
+        return
+    storage = getattr(rag, "text_chunks", None)
+    original_delete = getattr(storage, "delete", None)
+    if original_delete is None:
+        return
+
+    async def delete_with_list(ids) -> None:
+        """把任意 ID 集合转成 PGKVStorage 可切片的列表。"""
+        await original_delete(list(ids))
+
+    storage.delete = delete_with_list
+    rag._asuka_text_chunk_delete_wrapped = True
 
 
 async def aquery(kb_id, question: str, mode: str = "mix") -> str:
@@ -162,7 +180,12 @@ async def ainsert(kb_id, text: str, ids=None, file_paths=None) -> None:
 async def adelete_by_doc_id(kb_id, doc_id: str) -> None:
     """从某 KB 的 workspace 移除一篇文档的索引（含其实体/关系/向量/chunk）。"""
     rag = await get_lightrag(kb_id)
-    await rag.adelete_by_doc_id(doc_id)
+    _normalize_text_chunk_delete(rag)
+    result = await rag.adelete_by_doc_id(doc_id)
+    status = getattr(result, "status", None)
+    if status not in (None, "success", "not_found"):
+        message = getattr(result, "message", f"LightRAG deletion returned {status}")
+        raise RuntimeError(message)
 
 
 async def delete_workspace(kb_id) -> None:
