@@ -33,6 +33,7 @@ class HttpAiServiceClientTest {
     private final AtomicReference<String> path = new AtomicReference<>();
     private final AtomicReference<String> apiKey = new AtomicReference<>();
     private final AtomicReference<String> requestBody = new AtomicReference<>();
+    private final AtomicReference<String> protocol = new AtomicReference<>();
     private volatile int responseStatus = 200;
     private volatile String responseBody = "{\"taskId\":\"task-1\",\"status\":\"pending\",\"error\":null}";
 
@@ -60,6 +61,7 @@ class HttpAiServiceClientTest {
         assertThat(method.get()).isEqualTo("POST");
         assertThat(path.get()).isEqualTo("/kb/12/index");
         assertThat(apiKey.get()).isEqualTo("test-key");
+        assertThat(protocol.get()).isEqualTo("HTTP/1.1");
         assertThat(requestBody.get()).contains("\"docId\":\"doc-12\"", "\"fileName\":\"note.md\"");
     }
 
@@ -101,13 +103,17 @@ class HttpAiServiceClientTest {
 
         assertThatThrownBy(() -> client().getKbTask("task-1"))
                 .isInstanceOfSatisfying(BusinessException.class,
-                        error -> assertThat(error.errorCode()).isEqualTo(ErrorCode.AI_SERVICE_ERROR));
+                        error -> {
+                            assertThat(error.errorCode()).isEqualTo(ErrorCode.AI_SERVICE_ERROR);
+                            assertThat(error.getMessage()).contains("HTTP 503", "unavailable");
+                        });
     }
 
     private void handle(HttpExchange exchange) throws IOException {
         method.set(exchange.getRequestMethod());
         path.set(exchange.getRequestURI().getPath());
         apiKey.set(exchange.getRequestHeaders().getFirst("X-API-Key"));
+        protocol.set(exchange.getProtocol());
         requestBody.set(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
         byte[] body = responseBody.getBytes(StandardCharsets.UTF_8);
         exchange.sendResponseHeaders(responseStatus, body.length);
