@@ -2,7 +2,7 @@
 
 > 配套设计：`docs/2026-06-10-agentic-graph-rag-kb.md`
 > 定位：在现有里程碑之后新增「Graph RAG 知识库」专项，分 P0~P9 阶段推进。
-> 已确认决策：统一 LightRAG / PG+AGE / 共享 KB+文档过滤 / 完整 agent loop / DeepSeek+bge-m3 / opendataloader（容器内 JRE）。单文档过滤限制与新增依赖：用户已批准。旧管线迁移期并行保留，前端切换后下线。
+> 已确认决策：统一 LightRAG / PG+AGE / 共享 KB+文档过滤 / 完整 agent loop / DeepSeek+bge-m3 / opendataloader（容器内 JRE）。单文档过滤限制与新增依赖：用户已批准。P8 已完成旧管线下线。
 
 ---
 
@@ -16,18 +16,18 @@
 
 ### 阶段总览
 
-| 阶段 | 名称 | 关键交付 | scope |
-|------|------|---------|-------|
-| P0 | 基础设施与依赖准备 | PG+AGE 镜像、AI 容器 JRE+依赖、bge-m3、连通性验证 | ai / db |
-| P1 | LightRAG 接入骨架 | 单 workspace 跑通 ainsert/aquery（PG 后端） | ai |
-| P2 | 文档解析管线 | PDF→Markdown（opendataloader）+ MD 直读 | ai |
-| P3 | KB 数据模型与 Java 接口 | MySQL V4 + `/api/kb/**` + 归属校验 | db / common |
-| P4 | 增量索引任务链路 | Celery 索引任务 + 串行锁 + 状态机 + 删除 | ai |
-| P5 | Agent Loop（整库 QA） | 路由/分解/检索/评估/再检索/引用/SSE | ai |
-| P6 | 单文档过滤 QA | 召回后按 doc_id 过滤 + 放大召回 | ai |
-| P7 | 前端切片 | KB 管理页 + 加文档 + 问答页 | web |
-| P8 | 旧管线下线 | 移除自研 chunk RAG 与旧接口 | ai |
-| P9 | 测试 / 验收 / PR | 单测+集成+人工验收+文档同步 | — |
+| 阶段 | 名称 | 关键交付 | 状态 |
+|------|------|---------|------|
+| P0 | 基础设施与依赖准备 | PG+AGE 镜像、AI 容器 JRE+依赖、bge-m3 | 完成 |
+| P1 | LightRAG 接入骨架 | workspace 级 LightRAG PG 后端 | 完成 |
+| P2 | 文档解析管线 | PDF→Markdown + MD 直读 | 完成 |
+| P3 | KB 数据模型与 Java 接口 | MySQL V4 + `/api/kb/**` + 归属校验 | 完成 |
+| P4 | 增量索引任务链路 | Celery 索引任务 + 串行锁 + 状态机 + 删除 | 完成 |
+| P5 | Agent Loop（整库 QA） | 分解/检索/评估/再检索/引用/SSE | 完成 |
+| P6 | 单文档过滤 QA | 按 doc_id 过滤 + 放大召回 | 完成 |
+| P7 | 前端切片 | KB 管理页 + 加文档 + 问答页 | 完成 |
+| P8 | 旧管线下线 | 移除自研 chunk RAG 与旧接口 | 完成 |
+| P9 | 测试 / 验收 / PR | 自动化、CI、E2E 脚本、文档同步 | 本地验收完成 |
 
 ---
 
@@ -190,12 +190,21 @@
 
 分支：随各阶段；最终 PR 汇总。
 
+当前结果（2026-06-12）：
+
+- Java 98 项、AI 26 项测试通过；Web lint/build 通过。
+- GitHub Actions 已增加 Java、AI、Web 三个独立质量门禁。
+- AI 服务默认只在 Compose 内网暴露；开发时通过 `docker-compose.dev.yml` 显式发布端口。
+- `scripts/p9_kb_e2e.py` 已覆盖建库、加文档、索引、两类问答、文档删除和清理。
+- 真实 DeepSeek + bge-m3 + PG/AGE + Redis + Celery E2E 已通过。
+- 远端 CI 待分支 push 后验证。
+
 ---
 
 ## 风险与回滚
 
 - **索引慢/贵**（实体抽取每 chunk 调 LLM）：P4 设批量与并发上限；大书籍先小样本验证。
 - **AGE/PG 迁移**：P0 在独立环境验证镜像，保留旧 `postgres_data` 卷备份。
-- **迁移期双轨**：P3~P7 期间旧 `/internal/index` 保留，P8 才删，确保可回滚。
+- **旧管线回滚**：P8 已完成旧接口和实现下线；如需回滚，按 P8 独立提交恢复，
+  不与新 KB 数据混写。
 - **GPU 不可用**：bge-m3 CPU 降级路径在 P0 验证。
-```

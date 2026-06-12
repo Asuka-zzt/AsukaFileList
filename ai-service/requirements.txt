@@ -9,8 +9,7 @@ redis==5.0.4          # Celery broker & result backend
 # HTTP 客户端（调用 DeepSeek API）
 httpx==0.27.0
 # DeepSeek（OpenAI 兼容）客户端：agent loop 流式生成 + LightRAG llm_func 用
-# （LightRAG 经 pipmaster 运行时也会装，这里显式固化进镜像）
-openai==1.51.0
+openai==2.41.1         # 满足 LightRAG 1.5.1 的 openai>=2,<3 约束
 
 # 数据校验
 pydantic==2.7.1
@@ -18,13 +17,16 @@ pydantic-settings==2.2.1
 
 # 数据库（LightRAG PG 后端直连）
 asyncpg==0.31.0
-# 旧自研 chunk RAG 下线后不再直接使用 pgvector / pypdf / python-docx / openpyxl，
-# 因此不再显式固定这些可选依赖，避免与 LightRAG 的 extras 版本约束冲突。
+pgvector==0.4.2       # LightRAG PostgreSQL 向量存储运行时依赖
+numpy==2.4.6          # pgvector / LightRAG / embedding 共享数组类型
+# 旧自研 chunk RAG 下线后不再使用 pypdf / python-docx / openpyxl。
 
 # ── Graph RAG 知识库（P0 新增依赖，已获用户批准）──────────────
 lightrag-hku==1.5.1          # Graph RAG 引擎（实体抽取 + 向量检索 + 增量更新）
 opendataloader-pdf==2.4.7    # PDF → Markdown（Java JAR 包装，需容器内 JRE）
 FlagEmbedding==1.4.0         # 本地 bge-m3 embedding（GPU 优先，CPU 降级）
+torch==2.12.0                # 固定已验证的 CUDA 13 构建，避免解析到未来版本
+transformers==5.10.2         # 与当前 FlagEmbedding 镜像组合一致
 
 # 工具
 python-multipart==0.0.9   # FastAPI 文件上传

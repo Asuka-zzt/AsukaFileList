@@ -38,6 +38,7 @@ public class HttpAiServiceClient implements AiServiceClient {
     private final ObjectMapper objectMapper;
     private final HttpClient httpClient = HttpClient.newBuilder()
             .connectTimeout(CONNECT_TIMEOUT)
+            .version(HttpClient.Version.HTTP_1_1)
             .build();
 
     public HttpAiServiceClient(AsukaProperties properties, ObjectMapper objectMapper) {
@@ -107,7 +108,7 @@ public class HttpAiServiceClient implements AiServiceClient {
             HttpResponse<String> resp = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
             if (resp.statusCode() >= 300) {
                 throw new BusinessException(ErrorCode.AI_SERVICE_ERROR,
-                        "AI service " + method + " " + path + " -> HTTP " + resp.statusCode());
+                        buildUpstreamError(method, path, resp.statusCode(), resp.body()));
             }
             return resp.body();
         } catch (IOException | InterruptedException e) {
@@ -150,5 +151,15 @@ public class HttpAiServiceClient implements AiServiceClient {
 
     private static String trimTrailingSlash(String url) {
         return url.endsWith("/") ? url.substring(0, url.length() - 1) : url;
+    }
+
+    /** 构造长度受限的上游错误，保留 FastAPI 校验详情用于排障。 */
+    private static String buildUpstreamError(String method, String path, int status, String body) {
+        String detail = body == null ? "" : body.strip();
+        if (detail.length() > 500) {
+            detail = detail.substring(0, 500);
+        }
+        String suffix = detail.isEmpty() ? "" : ": " + detail;
+        return "AI service " + method + " " + path + " -> HTTP " + status + suffix;
     }
 }

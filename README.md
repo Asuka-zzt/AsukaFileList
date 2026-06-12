@@ -110,6 +110,10 @@ uvicorn app.main:app --reload
 celery -A app.core.celery_app worker --loglevel=info
 ```
 
+AI API 是 Java 主服务使用的内部接口。Compose 默认不向宿主机发布 8000 端口；
+本地直接运行 `uvicorn` 时可将 Java 的 `AI_SERVICE_BASE_URL` 设为
+`http://localhost:8000`。
+
 ### 第五步（可选）：启动 Web 前端（AList 风格）
 
 **方式一：直接本地运行**
@@ -142,7 +146,8 @@ tmux capture-pane -t asuka-frontend -p | tail -100
 ### 使用 Docker 完整启动（生产模拟）
 
 ```bash
-# 构建并启动 infra + java-service + ai-service
+# 先构建 Java 可执行包，再构建并启动完整应用栈
+mvn -DskipTests package
 docker compose --profile app up -d --build
 
 # 查看日志
@@ -151,6 +156,13 @@ docker compose logs -f ai-service
 ```
 
 访问同上：后端 8080，前端需单独构建或用 volume 挂载（开发仍推荐本地 npm run dev）。
+
+需要从宿主机直接调试容器内 AI API 时，显式叠加开发配置：
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.dev.yml \
+  --profile app up -d --build
+```
 
 ### 停止服务（tmux 方式）
 
@@ -169,6 +181,22 @@ mvn test
 
 # 编译检查
 mvn compile -q
+
+# AI 单元测试
+python -m pip install -r ai-service/requirements-dev.txt
+python -m pytest ai-service/tests -q
+
+# 前端质量门禁
+npm --prefix web ci
+npm --prefix web run lint
+npm --prefix web run build
+```
+
+真实 Graph RAG 全链路需要 Java、AI、Celery、PG+AGE、Redis、bge-m3 和有效
+DeepSeek 凭据：
+
+```bash
+P9_ADMIN_PASSWORD=你的管理员密码 python scripts/p9_kb_e2e.py
 ```
 
 ## API 验证
@@ -188,6 +216,12 @@ mvn compile -q
 | `POST /api/admin/index/build` `update` | 文件名索引重建（异步任务）/ 子树更新 |
 | `GET/POST /api/admin/storage/*` `driver/*` | 存储与驱动管理 |
 | `GET/POST /api/admin/user/*` `role/*` | 用户与角色管理 |
+| `GET/POST /api/kb` | 知识库列表与创建 |
+| `GET/POST /api/kb/{kbId}/documents` | 文档列表、加入知识库与索引状态 |
+| `POST /api/kb/{kbId}/chat` | 整库 Agentic RAG 问答（SSE） |
+| `POST /api/kb/{kbId}/documents/{docId}/chat` | 单文档问答（SSE） |
+
+Python `/kb/**` 仅供 Java 内网调用，不直接暴露给用户前端。
 
 ## 文档
 
@@ -195,7 +229,9 @@ mvn compile -q
 |------|------|
 | [docs/overview-design.md](docs/overview-design.md) | 概要设计 |
 | [docs/detailed-design.md](docs/detailed-design.md) | 详细设计（领域模型、接口、缓存、DB） |
-| [docs/development-plan.md](docs/development-plan.md) | 阶段开发计划（M0–M10） |
+| [docs/development-plan.md](docs/development-plan.md) | 阶段开发计划（M0-M9） |
+| [docs/2026-06-10-agentic-graph-rag-kb.md](docs/2026-06-10-agentic-graph-rag-kb.md) | Graph RAG 知识库设计 |
+| [docs/2026-06-11-p9-test-acceptance.md](docs/2026-06-11-p9-test-acceptance.md) | P9 测试与验收 |
 | [AGENTS.md](AGENTS.md) | AI 工作规范 |
 
 ## 开发阶段
@@ -211,4 +247,5 @@ mvn compile -q
 | M6 | ✅ | 任务中心（异步/进度/取消）与文件名索引/搜索 |
 | M7 | ✅ | 分享与公开访问（密码/过期/访问次数/阅后即焚/禁下载，分享下载链路） |
 | M8 | ✅ | 更多驱动：AWS S3（读写、预签名 302）、百度网盘（读写、代理下载） |
+| M9 | ✅ | Graph RAG 知识库、增量索引、整库/单文档问答与质量门禁 |
 | WebDAV | ✅ | WebDAV 服务端（Digest + 专用密码），把全部存储挂到 Windows/macOS/rclone |

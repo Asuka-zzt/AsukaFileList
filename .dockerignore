@@ -1,0 +1,13 @@
+.git
+.github
+.idea
+.vscode
+.env
+target/*
+!target/asuka-file-list-0.1.0-SNAPSHOT.jar
+ai-service
+docs
+ref
+scripts
+web
+*.md

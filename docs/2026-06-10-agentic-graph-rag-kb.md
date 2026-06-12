@@ -1,6 +1,6 @@
 # Agentic Graph RAG 知识库设计
 
-> 状态：设计草案（待评审）
+> 状态：P0-P9 已实现，真实 Graph RAG E2E 已通过
 > 作者：—
 > 关联：替换 `docs/overview-design.md` § 5.2 现有 pgvector chunk RAG 管线
 
@@ -230,8 +230,9 @@ pending ──> parsing ──> indexing ──> indexed
 
 ### 6.1 待移除 / 迁移（决策1）
 
-- 旧管线 `embedding_service.py` / `search_service.py` / `chat_service.py` / `vector_doc` 及 `/v1/search/*`、`/v1/chat`、旧 `/internal/index` 在新功能稳定后下线。
-- 现有「上传即索引」是网盘全量文件级；新 KB 是用户显式建库。迁移期可**并行保留**旧 `/internal/index` 直到前端切换完成，再删除（属决策1的过渡，不违背最终统一目标）。
+- P8 已移除旧管线 `embedding_service.py` / `search_service.py` / `chat_service.py` /
+  `vector_doc`，以及 `/v1/search/*`、`/v1/chat`、旧 `/internal/index`。
+- 当前仅保留用户显式创建知识库、加入文档后索引的 LightRAG 链路，不再执行上传即索引。
 
 ---
 
@@ -258,12 +259,22 @@ pending ──> parsing ──> indexing ──> indexed
 
 ---
 
-## 9. 测试计划（实现后补充）
+## 9. 测试与验收结果
 
-- 解析：opendataloader 对论文/书籍/含表格 PDF 的 Markdown 质量抽检。
-- 索引：增量 `ainsert`、`adelete_by_doc_id` 正确性；同 KB 串行锁有效性。
-- 检索/问答：整库 QA、单文档过滤 QA 的引用正确性；agent loop 迭代上限与超时生效。
-- 权限：跨用户访问 KB/文档被拒。
-- 回归：旧管线下线前后接口兼容。
-- 单测：`mvn test`（Java 侧 KB 接口与归属校验）、AI 服务 pytest。
+截至 2026-06-12，本地确定性自动化验证结果：
+
+| 检查 | 结果 | 覆盖 |
+| --- | --- | --- |
+| Java `mvn test -q` | 98 passed | KB CRUD/归属、SSE 代理、AI HTTP client、既有回归 |
+| AI `pytest -q` | 26 passed | 配置、解析、LightRAG 包装、删除兼容、索引任务、agent loop、路由 |
+| Web lint/build | passed | ESLint、TypeScript、Vite 生产构建 |
+| Compose 配置 | passed | AI 默认仅内网暴露，Java 使用服务名访问 |
+| 真实 E2E | passed | 建库、上传、索引、整库/单文档问答、引用、文档删除和清理 |
+
+真实 DeepSeek、bge-m3、PostgreSQL+AGE、Redis、Celery 全链路已在 Compose 环境执行：
+
+```bash
+python scripts/p9_kb_e2e.py
 ```
+
+GitHub Actions 已配置 Java、AI、Web 三个 job；分支推送后补充远端运行结果。

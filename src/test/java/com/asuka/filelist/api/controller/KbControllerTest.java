@@ -16,10 +16,12 @@ import org.springframework.test.web.servlet.MockMvc;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
@@ -155,6 +157,57 @@ class KbControllerTest {
         mockMvc.perform(get("/internal/kb-download")
                         .param("path", "/cb/p.pdf").param("userId", "1").param("sign", "x"))
                 .andExpect(status().isUnauthorized());
+    }
+
+    /** 整库/单文档 SSE 透传，并拒绝跨用户问答。 */
+    @Test
+    void chatStreamingAndOwnership(@TempDir Path tempDir) throws Exception {
+        when(aiServiceClient.submitKbIndex(anyLong(), any()))
+                .thenReturn(new AiKbTaskResponse("task-chat", "pending", null));
+        doAnswer(invocation -> {
+            java.io.OutputStream out = invocation.getArgument(2);
+            out.write(("data: {\"type\":\"token\",\"text\":\"answer\"}\n\n"
+                    + "data: {\"type\":\"done\"}\n\n").getBytes(StandardCharsets.UTF_8));
+            return null;
+        }).when(aiServiceClient).streamChat(anyLong(), any(), any());
+
+        String admin = login("admin", "test-admin-password");
+        createStorage(admin, "/chat", tempDir);
+        upload(admin, "/chat/note.md", "# note");
+        long kbId = createKb(admin, "chatKB", null);
+        String addResp = addDocument(admin, kbId, "/chat/note.md", "note")
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        long docId = dataId(addResp);
+        String expectedLightRagDocId = "kb" + kbId + "-doc" + docId;
+
+        String question = "{\"question\":\"what?\",\"history\":[{\"role\":\"user\",\"content\":\"before\"}]}";
+        mockMvc.perform(post("/api/kb/" + kbId + "/chat")
+                        .header("Authorization", "Bearer " + admin)
+                        .contentType(MediaType.APPLICATION_JSON).content(question))
+                .andExpect(status().isOk())
+                .andExpect(result -> org.assertj.core.api.Assertions.assertThat(
+                        result.getResponse().getContentType()).startsWith("text/event-stream"))
+                .andExpect(result -> org.assertj.core.api.Assertions.assertThat(
+                        result.getResponse().getContentAsString()).contains("\"type\":\"done\""));
+        verify(aiServiceClient).streamChat(eq(kbId), argThat(request ->
+                request.docId() == null && request.history().size() == 1), any());
+
+        mockMvc.perform(post("/api/kb/" + kbId + "/documents/" + docId + "/chat")
+                        .header("Authorization", "Bearer " + admin)
+                        .contentType(MediaType.APPLICATION_JSON).content(question))
+                .andExpect(status().isOk())
+                .andExpect(result -> org.assertj.core.api.Assertions.assertThat(
+                        result.getResponse().getHeader("X-Accel-Buffering")).isEqualTo("no"));
+        verify(aiServiceClient).streamChat(eq(kbId), argThat(request ->
+                expectedLightRagDocId.equals(request.docId())), any());
+
+        createUser(admin, "chat-bob", "chat-bob-password");
+        String bob = login("chat-bob", "chat-bob-password");
+        mockMvc.perform(post("/api/kb/" + kbId + "/chat")
+                        .header("Authorization", "Bearer " + bob)
+                        .contentType(MediaType.APPLICATION_JSON).content(question))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("KB_NOT_FOUND"));
     }
 
     // ─── helpers ───────────────────────────────────────────────
