@@ -37,6 +37,12 @@ public class KbDocumentEntity {
     /** 关联的 AI 服务索引任务 id */
     private String taskId;
 
+    /** 源文件大小（字节），用于目录增量同步的变更检测 */
+    private Long fileSize;
+
+    /** 源文件最后修改时间（毫秒精度），与 fileSize 共同构成变更指纹 */
+    private LocalDateTime sourceModified;
+
     @TableField(fill = FieldFill.INSERT)
     private LocalDateTime createdAt;
 
@@ -77,6 +83,12 @@ public class KbDocumentEntity {
 
     public String getTaskId() { return taskId; }
     public void setTaskId(String taskId) { this.taskId = taskId; }
+
+    public Long getFileSize() { return fileSize; }
+    public void setFileSize(Long fileSize) { this.fileSize = fileSize; }
+
+    public LocalDateTime getSourceModified() { return sourceModified; }
+    public void setSourceModified(LocalDateTime sourceModified) { this.sourceModified = sourceModified; }
 
     public LocalDateTime getCreatedAt() { return createdAt; }
     public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }

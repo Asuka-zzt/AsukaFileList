@@ -127,7 +127,26 @@ CREATE TABLE IF NOT EXISTS kb_document (
     status          VARCHAR(20)   NOT NULL DEFAULT 'pending',
     error_msg       VARCHAR(2000),
     task_id         VARCHAR(128),
+    file_size       BIGINT,
+    source_modified DATETIME,
     created_at      DATETIME,
     updated_at      DATETIME,
     CONSTRAINT uk_kbdoc_kb_source UNIQUE (kb_id, source_path)
+);
+
+CREATE TABLE IF NOT EXISTS kb_directory_batch (
+    id          BIGINT        AUTO_INCREMENT PRIMARY KEY,
+    kb_id       BIGINT        NOT NULL,
+    user_id     BIGINT        NOT NULL,
+    source_path VARCHAR(1000) NOT NULL,
+    status      VARCHAR(20)   NOT NULL DEFAULT 'running',
+    total       INT           NOT NULL DEFAULT 0,
+    added       INT           NOT NULL DEFAULT 0,
+    updated     INT           NOT NULL DEFAULT 0,
+    unchanged   INT           NOT NULL DEFAULT 0,
+    skipped     INT           NOT NULL DEFAULT 0,
+    failed      INT           NOT NULL DEFAULT 0,
+    error_msg   VARCHAR(2000),
+    created_at  DATETIME,
+    updated_at  DATETIME
 );
