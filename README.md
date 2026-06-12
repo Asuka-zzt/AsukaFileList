@@ -146,7 +146,8 @@ tmux capture-pane -t asuka-frontend -p | tail -100
 ### 使用 Docker 完整启动（生产模拟）
 
 ```bash
-# 构建并启动 infra + java-service + ai-service
+# 先构建 Java 可执行包，再构建并启动完整应用栈
+mvn -DskipTests package
 docker compose --profile app up -d --build
 
 # 查看日志
