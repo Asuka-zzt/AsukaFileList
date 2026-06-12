@@ -27,7 +27,7 @@
 | P6 | 单文档过滤 QA | 按 doc_id 过滤 + 放大召回 | 完成 |
 | P7 | 前端切片 | KB 管理页 + 加文档 + 问答页 | 完成 |
 | P8 | 旧管线下线 | 移除自研 chunk RAG 与旧接口 | 完成 |
-| P9 | 测试 / 验收 / PR | 自动化、CI、E2E 脚本、文档同步 | 本地自动化完成 |
+| P9 | 测试 / 验收 / PR | 自动化、CI、E2E 脚本、文档同步 | 本地验收完成 |
 
 ---
 
@@ -192,11 +192,12 @@
 
 当前结果（2026-06-11）：
 
-- Java 98 项、AI 22 项测试通过；Web lint/build 通过。
+- Java 98 项、AI 24 项测试通过；Web lint/build 通过。
 - GitHub Actions 已增加 Java、AI、Web 三个独立质量门禁。
 - AI 服务默认只在 Compose 内网暴露；开发时通过 `docker-compose.dev.yml` 显式发布端口。
 - `scripts/p9_kb_e2e.py` 已覆盖建库、加文档、索引、两类问答和清理。
-- 真实模型 E2E、远端 CI 和页面人工验收需在分支推送及有效 DeepSeek 环境中执行。
+- 真实 DeepSeek + bge-m3 + PG/AGE + Redis + Celery E2E 已通过。
+- 远端 CI 待分支 push 后验证。
 
 ---
 

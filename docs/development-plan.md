@@ -592,7 +592,7 @@ docker compose up -d mysql postgres redis
 ### M9（最后）：Python AI 服务集成
 
 目标：Java 主服务与 Python LightRAG 服务联调，实现显式知识库管理、增量索引、
-整库问答和单文档问答。本里程碑已按 P0-P9 专项计划完成开发，本地自动化验证完成。
+整库问答和单文档问答。本里程碑已按 P0-P9 专项计划完成开发和真实环境验收。
 
 接口签名：
 
@@ -638,10 +638,10 @@ docker compose up -d mysql postgres redis
 
 验收标准：
 
-- Java 98 项、AI 22 项测试通过，Web lint/build 通过。
+- Java 98 项、AI 24 项测试通过，Web lint/build 通过。
 - 加入 PDF/Markdown 后可异步索引并查询状态。
 - 整库和单文档问答可流式返回 token、引用和 done 事件。
-- 真实模型 E2E、远端 CI 与页面人工验收按 P9 脚本和清单执行。
+- 真实 DeepSeek、bge-m3、PG+AGE、Redis、Celery E2E 已通过；远端 CI 待 push 验证。
 
 ## 横向能力建设
 
@@ -715,8 +715,8 @@ docker compose up -d mysql postgres redis
 
 ## 下一步建议
 
-M0-M9 与 WebDAV 服务端均已完成开发。M9 的本地自动化质量门禁已通过；合并前还需
-在有效 DeepSeek/模型环境运行 `scripts/p9_kb_e2e.py`，确认远端 CI 和页面人工验收。
+M0-M9 与 WebDAV 服务端均已完成开发。M9 的本地自动化和真实模型 E2E 已通过；
+合并前仅需推送分支并确认 GitHub Actions。
 可选后续扩展：S3 服务端协议、更多网盘驱动、WebDAV 真排他锁与同目录文件副本。
 
 M4 设计见 `docs/2026-06-07-m4-readwrite.md`，M5 见

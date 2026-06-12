@@ -1,6 +1,6 @@
 # Agentic Graph RAG 知识库设计
 
-> 状态：P0-P8 已实现，P9 本地自动化验证完成
+> 状态：P0-P9 已实现，真实 Graph RAG E2E 已通过
 > 作者：—
 > 关联：替换 `docs/overview-design.md` § 5.2 现有 pgvector chunk RAG 管线
 
@@ -266,17 +266,15 @@ pending ──> parsing ──> indexing ──> indexed
 | 检查 | 结果 | 覆盖 |
 | --- | --- | --- |
 | Java `mvn test -q` | 98 passed | KB CRUD/归属、SSE 代理、AI HTTP client、既有回归 |
-| AI `pytest -q` | 22 passed | 解析、LightRAG 包装、索引任务、agent loop、路由 |
+| AI `pytest -q` | 24 passed | 配置、解析、LightRAG 包装、索引任务、agent loop、路由 |
 | Web lint/build | passed | ESLint、TypeScript、Vite 生产构建 |
 | Compose 配置 | passed | AI 默认仅内网暴露，Java 使用服务名访问 |
-| E2E 脚本静态检查 | passed | Java 公共 API 全链路脚本可执行、SSE 校验完整 |
+| 真实 E2E | passed | 建库、上传、索引、整库/单文档问答、引用和清理 |
 
-真实 DeepSeek、bge-m3、PostgreSQL+AGE、Celery 全链路和页面人工验收不进入
-确定性测试，需在具备有效模型凭据的环境执行：
+真实 DeepSeek、bge-m3、PostgreSQL+AGE、Redis、Celery 全链路已在 Compose 环境执行：
 
 ```bash
 python scripts/p9_kb_e2e.py
 ```
 
-GitHub Actions 已配置 Java、AI、Web 三个 job；分支推送后以远端运行结果作为
-合并门禁。
+GitHub Actions 已配置 Java、AI、Web 三个 job；分支推送后补充远端运行结果。

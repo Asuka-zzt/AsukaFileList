@@ -1,6 +1,6 @@
 # P9 测试、验收与收尾设计
 
-> 状态：本地自动化完成，真实环境验收待执行
+> 状态：本地自动化与真实环境 E2E 已完成，远端 CI 待 push 验证
 > 关联设计：`docs/2026-06-10-agentic-graph-rag-kb.md`
 > 关联计划：`docs/2026-06-10-graph-rag-dev-plan.md` P9
 
@@ -56,15 +56,16 @@ P9 采用方案 B。
 
 ### 3.1 Python 测试依赖
 
-新增 `ai-service/requirements-dev.txt`，只包含测试依赖并引用生产依赖：
+新增 `ai-service/requirements-dev.txt`，只包含测试运行所需的 FastAPI、Celery、
+HTTP、配置和 pytest 依赖，不安装 Torch、FlagEmbedding、模型或 PDF JAR：
 
 ```text
--r requirements.txt
 pytest
 pytest-asyncio
 ```
 
-具体版本在实施时根据 Python 3.11 与现有依赖解析结果固定。测试依赖不进入生产镜像。
+LightRAG 和 opendataloader 在 `tests/conftest.py` 中使用确定性导入桩，外部行为仍由
+各测试 monkeypatch。具体版本按 Python 3.11 固定，测试依赖不进入生产镜像。
 
 ### 3.2 API 与数据库
 
@@ -232,15 +233,24 @@ python scripts/p9_kb_e2e.py
 
 ## 10. 当前执行结果
 
-截至 2026-06-11：
+截至 2026-06-12：
 
 - `mvn test -q`：98 passed。
-- AI pytest：22 passed。
+- AI pytest：24 passed。
 - Web ESLint 与 Vite 生产构建：通过。
-- E2E 脚本编译与 SSE 解析自检：通过。
+- 默认 Compose 与开发端口覆盖配置：渲染通过。
+- 真实 E2E：建库、上传 Markdown、Celery 索引、整库问答、单文档问答、
+  citations/done 校验和资源清理全部通过。
 - GitHub Actions：工作流已提交到分支，待 push 后取得远端结果。
-- 真实模型 E2E 与页面人工验收：待有效 DeepSeek、bge-m3、PG+AGE、Celery
-  环境执行。
+
+真实联调期间发现并修复：
+
+- 补齐 Java 运行镜像和 Local 测试目录挂载。
+- Java 容器内部回调地址改为 Compose 服务名。
+- Redis 密码按 URL 规则编码，Celery 可连接带密码 Redis。
+- 固定 LightRAG 所需的 OpenAI 2.x、pgvector、Torch、Transformers 版本。
+- Java AI client 强制 HTTP/1.1，避免 Uvicorn h2c Upgrade 探测丢失 POST body。
+- CI Python 测试改用最小依赖和确定性导入桩，不再下载 Torch/CUDA/模型。
 
 ## 11. 风险与回滚
 
