@@ -1,11 +1,14 @@
 package com.asuka.filelist.api.controller;
 
+import com.asuka.filelist.api.request.KbAddDirectoryRequest;
 import com.asuka.filelist.api.request.KbAddDocumentRequest;
 import com.asuka.filelist.api.request.KbChatRequest;
 import com.asuka.filelist.api.request.KbCreateRequest;
+import com.asuka.filelist.api.response.KbDirectoryBatchResponse;
 import com.asuka.filelist.api.response.KbDocumentResponse;
 import com.asuka.filelist.api.response.KbResponse;
 import com.asuka.filelist.application.ai.KbApplicationService;
+import com.asuka.filelist.application.ai.KbDirectorySyncService;
 import com.asuka.filelist.common.result.ApiResponse;
 import com.asuka.filelist.infrastructure.security.CurrentUser;
 import jakarta.servlet.http.HttpServletResponse;
@@ -30,9 +33,12 @@ import java.util.List;
 public class KbController {
 
     private final KbApplicationService kbApplicationService;
+    private final KbDirectorySyncService kbDirectorySyncService;
 
-    public KbController(KbApplicationService kbApplicationService) {
+    public KbController(KbApplicationService kbApplicationService,
+                        KbDirectorySyncService kbDirectorySyncService) {
         this.kbApplicationService = kbApplicationService;
+        this.kbDirectorySyncService = kbDirectorySyncService;
     }
 
     /** 创建知识库。 */
@@ -60,6 +66,23 @@ public class KbController {
                                                        @PathVariable long kbId,
                                                        @Valid @RequestBody KbAddDocumentRequest request) {
         return ApiResponse.success(kbApplicationService.addDocument(currentUser, kbId, request));
+    }
+
+    /** 把网盘目录下的受支持文件批量加入知识库（异步批次+增量同步），立即返回批次进度。 */
+    @PostMapping("/{kbId}/documents/directory")
+    public ApiResponse<KbDirectoryBatchResponse> addDirectory(CurrentUser currentUser,
+                                                              @PathVariable long kbId,
+                                                              @Valid @RequestBody KbAddDirectoryRequest request) {
+        long batchId = kbDirectorySyncService.start(currentUser, kbId, request);
+        return ApiResponse.success(kbDirectorySyncService.getBatch(currentUser, kbId, batchId));
+    }
+
+    /** 查询目录入库批次进度。 */
+    @GetMapping("/{kbId}/batches/{batchId}")
+    public ApiResponse<KbDirectoryBatchResponse> getBatch(CurrentUser currentUser,
+                                                          @PathVariable long kbId,
+                                                          @PathVariable long batchId) {
+        return ApiResponse.success(kbDirectorySyncService.getBatch(currentUser, kbId, batchId));
     }
 
     /** 列出知识库文档与索引状态。 */

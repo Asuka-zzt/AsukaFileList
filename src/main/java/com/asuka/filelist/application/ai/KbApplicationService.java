@@ -25,6 +25,10 @@ import org.springframework.transaction.annotation.Transactional;
 import java.io.OutputStream;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
+import java.time.Instant;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Set;
 
@@ -108,29 +112,71 @@ public class KbApplicationService {
         if (findDocument(kbId, path) != null) {
             throw new BusinessException(ErrorCode.KB_DOCUMENT_DUPLICATE);
         }
+        return indexSingleFile(kbId, currentUser.id(), path, file, request.docType());
+    }
 
+    /**
+     * 建文档记录并提交索引任务；供单文件加入与目录批次（NEW）复用。
+     *
+     * <p>独立事务：目录批次跨 bean 调用此方法，使每个文件落在各自事务，单个失败不回滚其它；
+     * 若提交 AI 失败则连同新建记录一起回滚，不留孤儿 pending 文档。
+     */
+    @Transactional
+    public KbDocumentResponse indexSingleFile(long kbId, long ownerId, String path,
+                                              FileObjectResponse file, String docType) {
         KbDocumentEntity doc = new KbDocumentEntity();
         doc.setKbId(kbId);
-        doc.setUserId(currentUser.id());
+        doc.setUserId(ownerId);
         doc.setSourcePath(path);
         doc.setFileName(file.name());
-        doc.setDocType(normalizeDocType(request.docType()));
+        doc.setDocType(normalizeDocType(docType));
         doc.setStatus("pending");
+        doc.setFileSize(file.size());
+        doc.setSourceModified(toFingerprintTime(file.modified()));
         docMapper.insert(doc);
 
-        String lightragDocId = "kb" + kbId + "-doc" + doc.getId();
-        doc.setLightragDocId(lightragDocId);
+        doc.setLightragDocId("kb" + kbId + "-doc" + doc.getId());
+        submitIndex(kbId, ownerId, path, file, doc);
+        docMapper.updateById(doc);
+        return KbDocumentResponse.of(doc);
+    }
 
+    /**
+     * 文件已改动：更新指纹、重置状态并重新提交索引（复用同一稳定 lightragDocId）。
+     *
+     * <p>旧索引由 AI 端幂等索引任务在插入前按 doc_id 删除，故此处只需重新提交。独立事务，
+     * 提交失败则回滚为改动前状态，下次同步会再次识别为改动并重试。
+     */
+    @Transactional
+    public KbDocumentResponse reindexFile(long kbId, long docId, FileObjectResponse file, String docType) {
+        KbDocumentEntity doc = docMapper.selectById(docId);
+        if (doc == null || !doc.getKbId().equals(kbId)) {
+            throw new BusinessException(ErrorCode.KB_DOCUMENT_NOT_FOUND);
+        }
+        doc.setFileName(file.name());
+        doc.setDocType(normalizeDocType(docType));
+        doc.setFileSize(file.size());
+        doc.setSourceModified(toFingerprintTime(file.modified()));
+        doc.setStatus("pending");
+        doc.setErrorMsg(null);
+        if (doc.getLightragDocId() == null) {
+            doc.setLightragDocId("kb" + kbId + "-doc" + doc.getId());
+        }
+        submitIndex(kbId, doc.getUserId(), doc.getSourcePath(), file, doc);
+        docMapper.updateById(doc);
+        return KbDocumentResponse.of(doc);
+    }
+
+    /** 提交索引任务并回填 taskId（NEW 与 MODIFIED 复用）。 */
+    private void submitIndex(long kbId, long ownerId, String path, FileObjectResponse file, KbDocumentEntity doc) {
         AiKbIndexRequest indexRequest = new AiKbIndexRequest(
-                lightragDocId,
-                buildDownloadUrl(currentUser.id(), path),
+                doc.getLightragDocId(),
+                buildDownloadUrl(ownerId, path),
                 guessMimeType(file.name()),
                 file.name(),
                 doc.getDocType());
         AiKbTaskResponse task = aiServiceClient.submitKbIndex(kbId, indexRequest);
         doc.setTaskId(task.taskId());
-        docMapper.updateById(doc);
-        return KbDocumentResponse.of(doc);
     }
 
     /** 列出某知识库的文档与索引状态。 */
@@ -188,6 +234,17 @@ public class KbApplicationService {
     }
 
     // ─── 内部工具 ──────────────────────────────────────────────
+
+    /** 校验知识库归属（供目录同步服务复用），缺失/越权按未找到处理。 */
+    public void verifyKbOwnership(CurrentUser currentUser, long kbId) {
+        requireOwnedKb(currentUser, kbId);
+    }
+
+    /** 把文件 mtime 归一化为毫秒精度的本地时间，作为变更指纹（与 DATETIME(3) 对齐，避免误判）。 */
+    public static LocalDateTime toFingerprintTime(Instant instant) {
+        return instant == null ? null
+                : LocalDateTime.ofInstant(instant, ZoneId.systemDefault()).truncatedTo(ChronoUnit.MILLIS);
+    }
 
     /** 加载并校验归属的知识库，缺失/越权统一按未找到处理。 */
     private KbKnowledgeBaseEntity requireOwnedKb(CurrentUser currentUser, long kbId) {
