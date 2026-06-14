@@ -46,6 +46,9 @@ async def _run(kb_id, doc_id, url, mime_type, file_name) -> dict:
         await report_status(doc_id, "parsing")
         text = await parse_service.parse_document(url, mime_type, file_name)
         await report_status(doc_id, "indexing")
+        # 幂等：插入前按 doc_id 删除旧索引（不存在则 no-op）。使「改动重建」只需重新提交，
+        # 并让 Celery 重试不残留半成品。仅在解析成功后删除，避免解析失败误删旧索引。
+        await lightrag_service.adelete_by_doc_id(kb_id, doc_id)
         await lightrag_service.ainsert(kb_id, text, ids=[doc_id], file_paths=[file_name])
         await report_status(doc_id, "indexed", lightrag_doc_id=doc_id)
         return {"status": "indexed", "docId": doc_id}

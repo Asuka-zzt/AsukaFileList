@@ -79,6 +79,45 @@ export async function deleteDocument(kbId: number, docId: number): Promise<void>
   await api.delete(`/api/kb/${kbId}/documents/${docId}`);
 }
 
+// ─── 整目录入库 / 增量同步 ───────────────────────────────────────
+
+export type DirectoryBatchStatus = 'running' | 'completed' | 'failed';
+
+export interface DirectoryBatch {
+  id: number;
+  kbId: number;
+  sourcePath: string;
+  status: DirectoryBatchStatus;
+  total: number;
+  added: number;
+  updated: number;
+  unchanged: number;
+  skipped: number;
+  failed: number;
+  errorMsg?: string;
+}
+
+/** 发起目录入库/同步（异步），返回批次初始状态。 */
+export async function addDirectory(
+  kbId: number,
+  path: string,
+  docType = 'paper',
+  recursive = true,
+): Promise<DirectoryBatch> {
+  const { data } = await api.post(`/api/kb/${kbId}/documents/directory`, {
+    path,
+    docType,
+    recursive,
+  });
+  return data.data;
+}
+
+/** 查询目录入库批次进度。 */
+export async function getDirectoryBatch(kbId: number, batchId: number): Promise<DirectoryBatch> {
+  const { data } = await api.get(`/api/kb/${kbId}/batches/${batchId}`);
+  return data.data;
+}
+
 // ─── 问答（SSE 流式）────────────────────────────────────────────
 
 /**

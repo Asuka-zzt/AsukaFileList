@@ -5,10 +5,13 @@ import {
   listDocuments,
   addDocument,
   deleteDocument,
+  addDirectory,
+  getDirectoryBatch,
   type KbDocStatus,
+  type DirectoryBatch,
 } from '../api/kb'
 import { toast } from 'sonner'
-import { RefreshCw, Trash2, Plus, MessageSquare, ArrowLeft } from 'lucide-react'
+import { RefreshCw, Trash2, Plus, MessageSquare, ArrowLeft, FolderPlus } from 'lucide-react'
 
 const STATUS_STYLE: Record<KbDocStatus, string> = {
   pending: 'bg-gray-100 text-gray-600',
@@ -26,6 +29,9 @@ export default function KbDocuments() {
   const queryClient = useQueryClient()
   const [path, setPath] = useState('')
   const [docType, setDocType] = useState('paper')
+  const [dirPath, setDirPath] = useState('')
+  const [batch, setBatch] = useState<DirectoryBatch | null>(null)
+  const [syncing, setSyncing] = useState(false)
 
   const { data, isLoading, refetch } = useQuery({
     queryKey: ['kb-docs', id],
@@ -48,6 +54,39 @@ export default function KbDocuments() {
     } catch (e) {
       const err = e as Error & { code?: string }
       toast.error(err.code === 'KB_DOCUMENT_DUPLICATE' ? '该文件已在知识库中' : err.message || '加入失败')
+    }
+  }
+
+  // 整目录入库/增量同步：异步发起后轮询批次进度直到完成
+  const handleSyncDirectory = async () => {
+    if (!dirPath.trim()) {
+      toast.error('请填写网盘目录路径，如 /obsidian')
+      return
+    }
+    setSyncing(true)
+    setBatch(null)
+    try {
+      let b = await addDirectory(id, dirPath.trim(), docType)
+      setBatch(b)
+      while (b.status === 'running') {
+        await new Promise((r) => setTimeout(r, 1500))
+        b = await getDirectoryBatch(id, b.id)
+        setBatch(b)
+      }
+      if (b.status === 'completed') {
+        toast.success(
+          `目录同步完成：新增 ${b.added}、更新 ${b.updated}、未变 ${b.unchanged}、跳过 ${b.skipped}、失败 ${b.failed}`,
+        )
+        setDirPath('')
+      } else {
+        toast.error(`目录同步失败：${b.errorMsg || '未知错误'}`)
+      }
+      queryClient.invalidateQueries({ queryKey: ['kb-docs', id] })
+    } catch (e) {
+      const err = e as Error & { code?: string }
+      toast.error(err.message || '目录同步失败')
+    } finally {
+      setSyncing(false)
     }
   }
 
@@ -98,6 +137,34 @@ export default function KbDocuments() {
           <Plus className="w-4 h-4" /> 加入知识库
         </button>
       </div>
+
+      {/* 整目录入库 / 增量同步：仅 PDF 与 Markdown，复用上方文档类型 */}
+      <div className="bg-white border rounded p-3 mb-2 flex flex-wrap items-center gap-2">
+        <input
+          value={dirPath}
+          onChange={(e) => setDirPath(e.target.value)}
+          placeholder="网盘目录路径，如 /obsidian（递归入库目录下的 PDF/Markdown）"
+          className="flex-1 min-w-[260px] border rounded px-3 py-2 text-sm"
+        />
+        <button
+          onClick={handleSyncDirectory}
+          disabled={syncing}
+          className="flex items-center gap-1 text-sm px-3 py-2 rounded border bg-white disabled:opacity-50"
+        >
+          <FolderPlus className={`w-4 h-4 ${syncing ? 'animate-pulse' : ''}`} />
+          {syncing ? '同步中…' : '加入/同步整个目录'}
+        </button>
+      </div>
+
+      {batch && (
+        <div className="bg-gray-50 border rounded p-3 mb-4 text-xs text-gray-600">
+          目录 <span className="font-mono">{batch.sourcePath}</span> ·{' '}
+          {batch.status === 'running' ? '同步中…' : batch.status === 'completed' ? '已完成' : '失败'}
+          {' '}— 共 {batch.total}，新增 {batch.added}，更新 {batch.updated}，未变 {batch.unchanged}，
+          跳过 {batch.skipped}，失败 {batch.failed}
+          {batch.status === 'failed' && batch.errorMsg ? ` · ${batch.errorMsg}` : ''}
+        </div>
+      )}
 
       <div className="bg-white border rounded divide-y">
         {docs.length === 0 && (
